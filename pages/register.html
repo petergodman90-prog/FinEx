@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FinEx | Create Account</title>
+
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+
+    <main class="login-container">
+        <section class="login-card register-card">
+
+            <div class="brand">
+                <img
+                    src="../assets/images/finex-logo.jpg"
+                    alt="FinEx Logo"
+                    class="brand-logo"
+                >
+                <h1>FinEx</h1>
+            </div>
+
+            <h2>Create your account</h2>
+
+            <p class="subtitle">
+                Get started with managing your business using FinEx.
+            </p>
+
+            <form id="register-form" novalidate>
+
+                <label for="full-name">Full name</label>
+                <input
+                    type="text"
+                    id="full-name"
+                    name="full-name"
+                    placeholder="Enter your full name"
+                    autocomplete="name"
+                    required
+                >
+
+                <label for="business-name">Business name</label>
+                <input
+                    type="text"
+                    id="business-name"
+                    name="business-name"
+                    placeholder="Enter your business name"
+                    autocomplete="organization"
+                    required
+                >
+
+                <label for="register-email">Email address</label>
+                <input
+                    type="email"
+                    id="register-email"
+                    name="email"
+                    placeholder="Enter your email address"
+                    autocomplete="off"
+                    autocapitalize="none"
+                    spellcheck="false"
+                    required
+                >
+
+                <label for="phone">Phone number</label>
+                <input
+                    type="tel"
+                    id="phone"
+                    name="phone"
+                    placeholder="e.g. 08012345678"
+                    autocomplete="tel"
+                    required
+                >
+
+                <label for="register-password">Password</label>
+
+                <div class="password-wrapper">
+                    <input
+                        type="password"
+                        id="register-password"
+                        name="password"
+                        placeholder="Create a password"
+                        autocomplete="new-password"
+                        minlength="8"
+                        required
+                    >
+
+                    <button
+                        type="button"
+                        class="password-toggle"
+                        data-target="register-password"
+                        aria-label="Show password"
+                        aria-pressed="false"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <label for="confirm-password">Confirm password</label>
+
+                <div class="password-wrapper">
+                    <input
+                        type="password"
+                        id="confirm-password"
+                        name="confirm-password"
+                        placeholder="Enter your password again"
+                        autocomplete="new-password"
+                        minlength="8"
+                        required
+                    >
+
+                    <button
+                        type="button"
+                        class="password-toggle"
+                        data-target="confirm-password"
+                        aria-label="Show password"
+                        aria-pressed="false"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <button type="submit" class="login-button">
+                    Create Account
+                </button>
+
+                <div
+                    id="register-message"
+                    class="notification"
+                    role="status"
+                    aria-live="polite"
+                    hidden
+                ></div>
+
+            </form>
+
+            <p class="signup-text">
+                Already have an account?
+                <a href="../index.html">Sign in</a>
+            </p>
+
+            <p class="footer-text">
+                © 2026 FinEx. All rights reserved.
+            </p>
+
+        </section>
+    </main>
+
+    <script src="../js/register.js"></script>
+</body>
+</html>

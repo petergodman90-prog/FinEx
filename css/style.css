@@ -1,0 +1,567 @@
+/* 1. Global styles */
+:root {
+    --background: #111827;
+    --surface: #1e293b;
+    --surface-hover: #263449;
+    --border: #334155;
+    --primary: #10b981;
+    --primary-hover: #059669;
+    --text: #f8fafc;
+    --text-muted: #94a3b8;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: var(--background);
+    color: var(--text);
+    min-height: 100vh;
+}
+
+/* 2. Page layout */
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+}
+
+/* 3. Login card */
+.login-card {
+    width: 100%;
+    max-width: 430px;
+    padding: 36px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+}
+
+/* 4. FinEx branding */
+.brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 32px;
+}
+
+.brand-logo {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    border-radius: 10px;
+}
+
+.brand h1 {
+    font-size: 28px;
+    letter-spacing: -1px;
+}
+
+/* 5. Headings */
+.login-card h2 {
+    font-size: 26px;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 28px;
+}
+
+/* 6. Form fields */
+form > label,
+.password-heading label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+input[type="text"],
+input[type="password"] {
+    width: 100%;
+    padding: 13px 14px;
+    margin-bottom: 22px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #111827;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input::placeholder {
+    color: #64748b;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+}
+
+/* 7. Password heading */
+.password-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+a {
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 13px;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* 8. Remember me */
+.remember-option {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 24px;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.remember-option input {
+    accent-color: var(--primary);
+}
+
+/* 9. Sign-in button */
+.login-button {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 8px;
+    background: var(--primary);
+    color: #052e24;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.login-button:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+}
+
+/* 10. Messages and footer */
+#login-message {
+    font-size: 13px;
+    margin-top: 14px;
+    color: var(--text-muted);
+}
+
+.signup-text {
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 26px;
+}
+
+.signup-text a {
+    font-weight: 600;
+}
+
+.footer-text {
+    margin-top: 32px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+/* 11. Mobile responsiveness */
+@media (max-width: 480px) {
+    .login-container {
+        padding: 16px;
+    }
+
+    .login-card {
+        padding: 26px 22px;
+    }
+
+    .login-card h2 {
+        font-size: 23px;
+    }
+}
+
+/* ==============================
+   FINEX HOVER ANIMATIONS
+================================ */
+
+/* 1. Smooth page entrance */
+.login-card {
+    animation: cardEntrance 0.7s ease-out;
+    transition:
+        border-color 0.3s ease,
+        box-shadow 0.3s ease,
+        transform 0.3s ease;
+}
+
+/* Subtle lift when hovering over the login card */
+.login-card:hover {
+    border-color: #475569;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+    transform: translateY(-4px);
+}
+
+/* 2. Login logo animation */
+.brand-icon {
+    transition:
+        transform 0.3s ease,
+        box-shadow 0.3s ease;
+}
+
+.brand-icon:hover {
+    transform: rotate(-8deg) scale(1.08);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+/* 3. Input focus animation */
+input[type="text"],
+input[type="password"] {
+    transition:
+        border-color 0.25s ease,
+        box-shadow 0.25s ease,
+        background-color 0.25s ease;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus {
+    background-color: #172235;
+    border-color: #10b981;
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+}
+
+/* 4. Button hover animation */
+.login-button {
+    position: relative;
+    overflow: hidden;
+    transition:
+        background-color 0.25s ease,
+        box-shadow 0.25s ease,
+        transform 0.25s ease;
+}
+
+.login-button:hover {
+    background-color: #059669;
+    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.2);
+    transform: translateY(-2px);
+}
+
+.login-button:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* 5. Link hover animation */
+a {
+    transition:
+        color 0.2s ease,
+        opacity 0.2s ease;
+}
+
+a:hover {
+    color: #6ee7b7;
+}
+
+/* 6. Remember-me checkbox */
+.remember-option input {
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.remember-option input:hover {
+    transform: scale(1.15);
+}
+
+/* 7. Page entrance animation */
+@keyframes cardEntrance {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 8. Accessibility: respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* Fix card dimming when interacting with the login button */
+.login-card,
+.login-card:hover {
+    background-color: #1e293b;
+}
+
+/* Keep the login button bright and responsive */
+.login-button {
+    background-color: #10b981;
+    color: #052e24;
+    opacity: 1;
+    filter: none;
+}
+
+.login-button:hover {
+    background-color: #30cc0d;
+    color: #052e24;
+    opacity: 1;
+    filter: none;
+    box-shadow: 0 8px 24px rgba(75, 233, 154, 0.25);
+    transform: translateY(-2px);
+}
+/* Password visibility toggle */
+.password-input-container {
+    position: relative;
+    width: 100%;
+}
+
+.password-input-container input[type="password"],
+.password-input-container input[type="text"] {
+    width: 100%;
+    padding-right: 48px;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 12px;
+    top: 0;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.password-toggle:hover {
+    color: #10b981;
+    transform: scale(1.08);
+}
+
+.password-toggle:focus-visible {
+    outline: 2px solid #10b981;
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* ==============================
+   REGISTRATION PAGE
+================================ */
+
+.register-card {
+    max-width: 480px;
+}
+
+.register-card h2 {
+    margin-bottom: 10px;
+}
+
+.register-card .subtitle {
+    margin-bottom: 24px;
+}
+
+.register-card form > label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.register-card input[type="text"],
+.register-card input[type="email"],
+.register-card input[type="tel"],
+.register-card input[type="password"] {
+    width: 100%;
+    padding: 13px 14px;
+    margin-bottom: 18px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #111827;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.register-card input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+}
+
+.register-card .login-button {
+    margin-top: 6px;
+}
+
+#register-message {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+@media (max-width: 480px) {
+    .register-card {
+        padding: 26px 22px;
+    }
+}
+/* ===== Registration Notifications ===== */
+
+.notification {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 15px 16px;
+    margin-top: 18px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.5;
+    animation: notificationAppear 0.3s ease-out;
+    overflow-wrap: anywhere;
+}
+
+.notification[hidden] {
+    display: none;
+}
+
+.notification-icon {
+    font-size: 20px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.notification-content {
+    flex: 1;
+}
+
+.notification-title {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 3px;
+}
+
+.notification-success {
+    background: #e8f8ef;
+    color: #166534;
+    border-color: #86efac;
+}
+
+.notification-error {
+    background: #fff0f0;
+    color: #b42318;
+    border-color: #fca5a5;
+}
+
+.notification-warning {
+    background: #fff8e6;
+    color: #92400e;
+    border-color: #fcd34d;
+}
+
+@keyframes notificationAppear {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .notification {
+        animation: none;
+    }
+}
+
+/* ===== Password Visibility Button Fix ===== */
+
+.password-wrapper {
+    position: relative !important;
+    display: block !important;
+    width: 100% !important;
+    margin-bottom: 16px;
+}
+
+.password-wrapper input {
+    display: block;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding-right: 48px !important;
+}
+
+.password-wrapper .password-toggle {
+    position: absolute !important;
+    top: 50% !important;
+    right: 10px !important;
+    transform: translateY(-50%) !important;
+
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    width: 34px !important;
+    height: 34px !important;
+    padding: 6px !important;
+
+    background: transparent !important;
+    border: none !important;
+    border-radius: 6px !important;
+
+    color: #64748b !important;
+    cursor: pointer !important;
+    z-index: 5 !important;
+}
+
+.password-wrapper .password-toggle svg {
+    display: block !important;
+    width: 22px !important;
+    height: 22px !important;
+    fill: none !important;
+    stroke: currentColor !important;
+    stroke-width: 1.8 !important;
+}
+
+.password-wrapper .password-toggle:hover {
+    color: #2563eb !important;
+    background: #f1f5f9 !important;
+}
+
+.password-wrapper .password-toggle:focus-visible {
+    outline: 2px solid #2563eb !important;
+    outline-offset: 2px !important;
+}

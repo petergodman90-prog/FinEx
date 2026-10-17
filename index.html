@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinEx | Sign In</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <main class="login-container">
+
+        <section class="login-card">
+
+    <div class="brand">
+        <img src="assets/images/finex-logo.jpg" alt="FinEx Logo" class="brand-logo">
+        <h1>FinEx</h1>
+    </div>
+
+            <h2>Welcome back</h2>
+            <p class="subtitle">Sign in to manage your business.</p>
+
+            <form id="login-form">
+
+                <label for="email">Email address or phone number</label>
+                <input
+                    type="text"
+                    id="email"
+                    name="email"
+                    placeholder="Enter your email or phone"
+                    required
+                >
+
+                <div class="password-heading">
+                    <label for="password">Password</label>
+                    <a href="#" id="forgot-password">Forgot password?</a>
+                </div>
+
+                <div class="password-input-container">
+    <input
+        type="password"
+        id="password"
+        name="password"
+        placeholder="Enter your password"
+        required
+    >
+
+    <button
+        type="button"
+        id="toggle-password"
+        class="password-toggle"
+        aria-label="Show password"
+        aria-pressed="false"
+    >
+        <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg"
+             width="21" height="21" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true">
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/>
+            <circle cx="12" cy="12" r="3"/>
+        </svg>
+    </button>
+</div>
+
+                <label class="remember-option">
+                    <input type="checkbox" id="remember">
+                    <span>Remember me</span>
+                </label>
+
+                <button type="submit" class="login-button">
+                    Sign In
+                </button>
+
+                <div id="login-message" class="notification" role="status" aria-live="polite" hidden></div>
+
+            </form>
+
+       <p class="signup-text">
+            Don't have an account?
+            <a href="pages/register.html" id="signup-link">Create account</a>
+      </p>
+            <p class="footer-text">© 2026 FinEx. All rights reserved.</p>
+
+        </section>
+
+    </main>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
