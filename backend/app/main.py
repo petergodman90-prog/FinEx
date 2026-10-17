@@ -1,38 +1,64 @@
+"""FINEX backend application factory."""
+
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.api import auth, customers, dashboard, proposals
 from app.core.config import get_settings
 from app.core.db import engine
+from app.core.logging_filter import install_pii_filter
+from app.core.middleware import RequestContextMiddleware
+from app.services.errors import DomainError
 
 settings = get_settings()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    async with engine.connect() as conn:
-        await conn.execute(text("SELECT 1"))
-    yield
-    # Shutdown
-    await engine.dispose()
+def create_app() -> FastAPI:
+    install_pii_filter()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Fail fast if the database is unreachable.
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        yield
+        await engine.dispose()
+
+    app = FastAPI(
+        title=settings.APP_NAME,
+        version="0.1.0",
+        lifespan=lifespan,
+    )
+    app.add_middleware(RequestContextMiddleware)
+
+    @app.exception_handler(DomainError)
+    async def _domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
+        content: dict = {"detail": str(exc), "code": exc.code}
+        if exc.details:
+            content["details"] = exc.details
+        return JSONResponse(status_code=exc.status_code, content=content)
+
+    api = APIRouter(prefix="/api/v1")
+    api.include_router(auth.router)
+    api.include_router(customers.router)
+    api.include_router(proposals.router)
+    api.include_router(dashboard.router)
+    app.include_router(api)
+
+    @app.get("/")
+    async def root():
+        return {"app": settings.APP_NAME, "env": settings.APP_ENV}
+
+    @app.get("/health")
+    async def health():
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"status": "ok"}
+
+    return app
 
 
-app = FastAPI(
-    title=settings.APP_NAME,
-    version="0.1.0",
-    lifespan=lifespan,
-)
-
-
-@app.get("/")
-async def root():
-    return {"app": settings.APP_NAME, "env": settings.APP_ENV}
-
-
-@app.get("/health")
-async def health():
-    async with engine.connect() as conn:
-        await conn.execute(text("SELECT 1"))
-    return {"status": "ok"}
+app = create_app()
