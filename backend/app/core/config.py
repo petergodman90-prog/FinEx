@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     APP_ENV: str = "local"
     APP_NAME: str = "FINEX"
 
+    # Comma-separated browser origins allowed to call the API directly.
+    # Leave empty when the UI and API share an origin (reverse proxy); this is
+    # the production default.  Set it only for local static-server development.
+    CORS_ORIGINS: str = ""
+
     DATABASE_URL: str
     # Used by Alembic only; falls back to DATABASE_URL when unset. Point this
     # at an owner/migration role so the runtime app role can stay

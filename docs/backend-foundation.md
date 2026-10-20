@@ -1,6 +1,6 @@
 # Backend Foundation (Layers 1–6)
 
-Status: complete and tested (33 tests green). Deferred by design: AI assistant
+Status: complete and tested (52 tests green). Deferred by design: AI assistant
 NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
 
 ## Layers
@@ -10,7 +10,11 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
   run locations (repo root or `backend/`). Keys: `DATABASE_URL`,
   `MIGRATION_DATABASE_URL` (optional, owner/migration role), `REDIS_URL`,
   JWT settings, `PII_ENCRYPTION_KEY` (Fernet), `PII_HMAC_KEY` (hex).
-- `app/core/db.py` — async engine + `SessionLocal`.
+- `app/core/db.py` — async engine + `SessionLocal`; in production,
+  `assert_runtime_role_is_restricted` refuses to start if the connection role
+  is `SUPERUSER` or has `BYPASSRLS`.
+- `app/main.py` — CORS is opt-in via `CORS_ORIGINS` and never a wildcard;
+  production serves the UI and API from one origin.
 - `app/core/rls.py` — single source of truth for tenancy: GUC names,
   `bind_session_context(session, org_id=..., user_id=...)` (binds via
   `set_config(..., is_local => true)`), the policy SQL shared by the migration
@@ -59,12 +63,18 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
   (`ENABLE` + `FORCE` + policies generated from `rls.py`), the append-only
   audit trigger, `CREATE ROLE finex_app` (NOSUPERUSER, NOBYPASSRLS, NOLOGIN)
   and its grants (audit_logs gets INSERT/SELECT only).
+- `backend/migrations/versions/002_person_a_financial_core.py`: executes
+  Person A's canonical ledger SQL, adds RLS to every `ledger` table
+  (`receipt_lines` via its receipt), sets `security_invoker=true` on the read
+  views, rejects posting rows that do not match the transaction's org context,
+  and grants `finex_app` SELECT + posting-function EXECUTE only.
 - `alembic check` is clean (models ↔ migration zero drift).
-- `backend/tests` (33 tests): auth flows, refresh rotation/revocation,
+- `backend/tests` (52 tests): auth flows, refresh rotation/revocation,
   customers CRUD/dedup/merge/permissions, proposal idempotency/caps/expiry,
   dashboard metrics, RBAC matrix, crypto (encrypt/blind index), RLS
   enabled+forced and cross-tenant isolation — including behavioral checks that
-  run as `SET ROLE finex_app`.
+  run as `SET ROLE finex_app`, ledger posting/receipt isolation, safe views,
+  cross-tenant posting rejection, and posting idempotency.
 
 ## Run / test
 
@@ -88,6 +98,9 @@ pytest -q                         # Postgres required; Redis is faked (fakeredis
   server-side via Redis.
 - Proposals: 24h expiry, idempotency hash, role allow-list, spend caps,
   immutable audit trail.
+- Ledger: every table RLS-enabled and forced; `receipt_lines` isolated through
+  its parent receipt; read views are `security_invoker`; `finex_app` has no
+  direct ledger writes; posting functions reject a foreign org context.
 
 ## Windows/Docker test-reliability note
 Docker Desktop's Windows-side port proxy on this machine intermittently wedges:
@@ -109,6 +122,14 @@ clears the tide.
 ## Hardening for production
 - Set a real `MIGRATION_DATABASE_URL` (owner/migration role) and grant
   `finex_app` `LOGIN` (it is NOLOGIN by default) with a password; the runtime
-  `DATABASE_URL` should use `finex_app`, not the owner role.
+  `DATABASE_URL` should use `finex_app`, not the owner role. With
+  `APP_ENV=production`, startup fails if the runtime role is `SUPERUSER` or has
+  `BYPASSRLS`.
+- Leave `CORS_ORIGINS` empty and serve the UI plus `/api` from one HTTPS origin
+  (reverse proxy), with HSTS, CSP, `X-Content-Type-Options` and
+  `Referrer-Policy`.
 - Replace local JWT/PII keys; store them in a secret manager.
+- Configure automated encrypted backups with point-in-time recovery and test a
+  restore before launch — see
+  [runbooks/backup-and-restore.md](runbooks/backup-and-restore.md).
 - Rate limiting and audit retention policies per `docs/security-charter.md`.
