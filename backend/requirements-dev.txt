@@ -1,0 +1,5 @@
+# Test-only dependencies (installed on top of requirements.txt).
+-r requirements.txt
+
+# In-memory Redis replacement so auth/session tests are hermetic.
+fakeredis>=2.26
