@@ -8,6 +8,31 @@
 </head>
 <body>
 
+    <div class="login-bg" aria-hidden="true">
+        <video
+            class="login-bg-video login-bg-video--top"
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+        >
+            <source src="assets/video/loginpage%20wallpaper.mp4" type="video/mp4">
+        </video>
+
+        <video
+            class="login-bg-video login-bg-video--bottom"
+            muted
+            loop
+            playsinline
+            preload="auto"
+        >
+            <source src="assets/video/loginpage%20wallpaper.mp4" type="video/mp4">
+        </video>
+    </div>
+
+    <div class="login-bg-overlay" aria-hidden="true"></div>
+
     <main class="login-container">
 
         <section class="login-card">
@@ -86,6 +111,7 @@
 
     </main>
 
+    <script src="js/bg-video.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
