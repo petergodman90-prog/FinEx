@@ -1,0 +1,64 @@
+name: backend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: finex
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: finex
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finex -d finex"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: local
+      DATABASE_URL: postgresql+asyncpg://finex:postgres@127.0.0.1:5432/finex
+      REDIS_URL: redis://127.0.0.1:6379/0
+      # Test-only values. Never reuse these outside CI.
+      JWT_SECRET: ci-only-not-a-production-secret
+      PII_ENCRYPTION_KEY: IlhSkVWXA6mKWXGy2rLEPXojxdbYigobmmWiYCPQLxk=
+      PII_HMAC_KEY: f7b830813a497f11c82c214aba395ea4bb2d48528ebe004a30dd282511471fc9
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Apply migrations (fresh database)
+        run: alembic upgrade head
+
+      - name: Check model/migration drift
+        run: alembic check
+
+      - name: Run tests
+        run: pytest -q

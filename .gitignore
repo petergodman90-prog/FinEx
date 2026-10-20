@@ -32,7 +32,10 @@ Thumbs.db
 !.vscode/extensions.json
 .idea/
 
-# Data
+# Data and database dumps (contain customer records — never commit)
 *.sqlite
 *.db
 /data/
+/backups/
+*.dump
+*.sql.gz

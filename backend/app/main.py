@@ -3,12 +3,13 @@
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api import auth, customers, dashboard, proposals
 from app.core.config import get_settings
-from app.core.db import engine
+from app.core.db import assert_runtime_role_is_restricted, engine
 from app.core.logging_filter import install_pii_filter
 from app.core.middleware import RequestContextMiddleware
 from app.services.errors import DomainError
@@ -24,6 +25,8 @@ def create_app() -> FastAPI:
         # Fail fast if the database is unreachable.
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
+        # In production, never run as a role that silently bypasses RLS.
+        await assert_runtime_role_is_restricted()
         yield
         await engine.dispose()
 
@@ -33,6 +36,22 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.add_middleware(RequestContextMiddleware)
+
+    # Cross-origin access is opt-in and never a wildcard: production serves the
+    # UI and API from one origin (reverse proxy), so CORS_ORIGINS stays empty.
+    cors_origins = [
+        origin.strip()
+        for origin in settings.CORS_ORIGINS.split(",")
+        if origin.strip()
+    ]
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     @app.exception_handler(DomainError)
     async def _domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:

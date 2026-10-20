@@ -9,7 +9,7 @@ financial posting service that is the single source of financial and stock truth
 | Path | Owner | Contents |
 | --- | --- | --- |
 | `backend/` | Person B | FastAPI platform API: auth/sessions, tenant isolation (RLS), CRM, dashboard, proposals, audit |
-| `db/migrations/` | Person A | Versioned SQL for the financial core (`ledger` schema, posting functions, immutable records) |
+| `db/migrations/` | Person A | Canonical SQL for the financial core (`ledger` schema, posting functions, immutable records); executed by Alembic revision 002 |
 | `assets/`, `css/`, `js/`, `pages/`, `index.html` | Person C | Static HTML/CSS/JS interface (no build step) |
 | `docs/` | All | Architecture, contracts, security charter, ADRs, runbooks |
 | `docker-compose.yml` | Person B | Local PostgreSQL 15 + Redis |
@@ -37,7 +37,7 @@ service; the UI displays backend-provided figures without recalculating them.
    pip install -r requirements.txt -r requirements-dev.txt
    alembic upgrade head
    uvicorn app.main:app --reload        # http://127.0.0.1:8000/health
-   pytest -q                            # 33 tests; Postgres required, Redis faked
+   pytest -q                            # 52 tests; Postgres required, Redis faked
    ```
 
 4. Frontend: open `index.html` directly, or serve the repo root:
@@ -46,22 +46,37 @@ service; the UI displays backend-provided figures without recalculating them.
    python -m http.server 5500
    ```
 
+   The static server runs on a different port than the API, so local browser
+   calls need `CORS_ORIGINS=http://127.0.0.1:5500,http://localhost:5500` in
+   `.env` (already the placeholder default). In production, serve the UI and
+   proxy `/api` from the same origin and leave `CORS_ORIGINS` empty.
+
 ## Database migrations
 
-Two forward-only streams currently exist:
+Alembic is the single migration runner (one command for a fresh database):
 
-1. `backend/migrations/` (Alembic) — organisations, users, memberships,
-   customers, touchpoints, proposals, audit logs, and their RLS policies.
-2. `db/migrations/` (plain SQL) — Person A's financial core in the `ledger` schema.
+```powershell
+cd backend
+alembic upgrade head
+```
 
-Apply Alembic first, then the SQL financial-core migration. Unifying these into
-Alembic is tracked as an integration task; see
+- `001_initial` — platform tables: organisations, users, memberships,
+  customers, touchpoints, proposals, audit logs, and their RLS policies.
+- `002_financial_core` — executes
+  [`db/migrations/0001_person_a_financial_core.sql`](db/migrations/0001_person_a_financial_core.sql),
+  then adds RLS policies to every `ledger` table, `security_invoker` read views,
+  posting-context guards, and read/execute-only grants for `finex_app`.
+
+Never apply the SQL file separately; Alembic owns the schema version. Run
+migrations as the schema owner (`MIGRATION_DATABASE_URL` if set), not as the
+runtime `finex_app` role. See
 [docs/runbooks/database-migrations.md](docs/runbooks/database-migrations.md).
 
 ## Documentation
 
 - [Backend foundation](docs/backend-foundation.md) — layers, invariants, Windows/Docker notes
 - [Database migration runbook](docs/runbooks/database-migrations.md)
+- [Backup and restore runbook](docs/runbooks/backup-and-restore.md)
 - [ADR 0001: financial records are append-only](docs/adr/0001-financial-records-are-append-only.md)
 
 ## Windows/Docker note

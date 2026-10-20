@@ -88,7 +88,6 @@ CREATE TABLE ledger.journal_entries (
     reversal_of_id uuid,
     created_at timestamptz NOT NULL DEFAULT now(),
     created_by uuid,
-    PRIMARY KEY (id),
     UNIQUE (org_id, entry_number),
     UNIQUE (org_id, id),
     UNIQUE (posting_event_id),
@@ -579,7 +578,7 @@ BEGIN
       INTO v_total
       FROM jsonb_array_elements(p_lines);
 
-    INSERT INTO ledger.org_sequences (org_id, next_receipt_number)
+    INSERT INTO ledger.org_sequences (org_id, next_journal_number, next_receipt_number)
     VALUES (p_org_id, 1, 2)
     ON CONFLICT (org_id) DO UPDATE
         SET next_receipt_number = ledger.org_sequences.next_receipt_number + 1
