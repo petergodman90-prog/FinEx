@@ -1,5 +1,6 @@
 const registerForm = document.getElementById("register-form");
 const registerMessage = document.getElementById("register-message");
+const registerSubmitButton = registerForm.querySelector('button[type="submit"]');
 
 function showNotification(type, title, message) {
     const icons = {
@@ -49,7 +50,7 @@ function hideNotification() {
 
 registerForm.addEventListener("input", hideNotification);
 
-registerForm.addEventListener("submit", function (event) {
+registerForm.addEventListener("submit", async function (event) {
     event.preventDefault();
 
     const fullName = document.getElementById("full-name").value.trim();
@@ -131,12 +132,44 @@ registerForm.addEventListener("submit", function (event) {
         return;
     }
 
-    // 6. All frontend checks passed
+    // 6. Create the account and sign in. The API sets HttpOnly cookies.
+    if (!window.FinexAPI) {
+        showNotification(
+            "error",
+            "Cannot reach the server",
+            "The API client failed to load. Refresh the page and try again."
+        );
+        return;
+    }
+
+    registerSubmitButton.disabled = true;
     showNotification(
         "success",
-        "Details validated successfully!",
-        "Your details look good! Account creation will be connected later."
+        "Creating your workspace...",
+        "Setting up your account and first organisation."
     );
+
+    try {
+        await window.FinexAPI.request("/auth/register", {
+            method: "POST",
+            body: JSON.stringify({
+                org_name: businessName,
+                full_name: fullName,
+                email: email,
+                phone: phone || null,
+                password: password
+            })
+        });
+
+        window.location.assign("dashboard.html");
+    } catch (error) {
+        registerSubmitButton.disabled = false;
+        showNotification(
+            "error",
+            "Could not create account",
+            error.message || "Please check your details and try again."
+        );
+    }
 });
 
 // Password visibility toggle
