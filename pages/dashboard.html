@@ -21,7 +21,7 @@
         })();
     </script>
 
-    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/dashboard.css?v=20261021-2">
 </head>
 
 <body>
@@ -420,8 +420,9 @@
                     <input
                         type="search"
                         id="dashboard-search"
-                        placeholder="Search anything..."
-                        aria-label="Search dashboard"
+                        placeholder="Search customers..."
+                        aria-label="Search customers"
+                        enterkeyhint="search"
                     >
                 </label>
 
@@ -842,9 +843,10 @@
                         placeholder="Amount (optional)"
                     >
                     <select id="proposal-type" name="proposal_type">
-                        <option value="manual">Manual</option>
-                        <option value="purchase">Purchase</option>
+                        <option value="sale">Sale</option>
                         <option value="expense">Expense</option>
+                        <option value="purchase">Purchase</option>
+                        <option value="manual">Manual</option>
                     </select>
                     <button type="submit" class="text-button">Create proposal</button>
                 </form>
@@ -883,8 +885,8 @@
                     <button type="button" class="quick-action" data-action="sale">
                         <span class="quick-action-icon">＋</span>
                         <span>
-                            <strong>Record a Sale</strong>
-                            <small>Add a new sale</small>
+                            <strong>New Sale</strong>
+                            <small>Stage a sale proposal</small>
                         </span>
                         <span class="action-arrow">→</span>
                     </button>
@@ -892,8 +894,8 @@
                     <button type="button" class="quick-action" data-action="expense">
                         <span class="quick-action-icon expense-action-icon">↘</span>
                         <span>
-                            <strong>Add Expense</strong>
-                            <small>Track business spending</small>
+                            <strong>New Expense</strong>
+                            <small>Stage an expense proposal</small>
                         </span>
                         <span class="action-arrow">→</span>
                     </button>
@@ -902,7 +904,7 @@
                         <span class="quick-action-icon product-action-icon">▤</span>
                         <span>
                             <strong>Add Product</strong>
-                            <small>Manage your stock</small>
+                            <small>Stock module not connected yet</small>
                         </span>
                         <span class="action-arrow">→</span>
                     </button>
@@ -1159,8 +1161,81 @@
     </dialog>
 
 
-    <script src="../js/api.js"></script>
-    <script src="../js/dashboard.js"></script>
+    <!-- CUSTOMER EDIT / MERGE -->
+    <dialog
+        id="customer-dialog"
+        class="app-dialog app-dialog--wide"
+        aria-labelledby="customer-dialog-title"
+    >
+        <div class="app-dialog-card app-dialog-card--wide">
+            <button
+                type="button"
+                class="app-dialog-close"
+                id="customer-dialog-close"
+                aria-label="Close"
+            >
+                &times;
+            </button>
+
+            <span class="app-dialog-eyebrow">Customer record</span>
+            <h2 id="customer-dialog-title">Edit customer</h2>
+
+            <form id="customer-edit-form" class="app-form-grid">
+                <label>
+                    <span>Name</span>
+                    <input id="customer-edit-name" type="text" maxlength="200" required>
+                </label>
+                <label>
+                    <span>Email</span>
+                    <input id="customer-edit-email" type="email" maxlength="254">
+                </label>
+                <label>
+                    <span>Phone</span>
+                    <input id="customer-edit-phone" type="tel" maxlength="32">
+                </label>
+                <label>
+                    <span>Company</span>
+                    <input id="customer-edit-company" type="text" maxlength="200">
+                </label>
+                <label class="app-form-full">
+                    <span>Notes</span>
+                    <textarea id="customer-edit-notes" rows="3" maxlength="10000"></textarea>
+                </label>
+                <label class="app-form-full">
+                    <span>Tags</span>
+                    <input id="customer-edit-tags" type="text" placeholder="vip, wholesale, follow-up">
+                </label>
+
+                <p class="app-dialog-error app-form-full" id="customer-edit-error" hidden></p>
+
+                <div class="app-dialog-actions app-form-full">
+                    <button type="button" class="setting-button" id="customer-edit-cancel">
+                        Cancel
+                    </button>
+                    <button type="submit" class="setting-button" id="customer-edit-save">
+                        Save changes
+                    </button>
+                </div>
+            </form>
+
+            <div class="customer-merge-box">
+                <div>
+                    <strong>Merge duplicate</strong>
+                    <p>Move this record's history into another customer and hide this one.</p>
+                </div>
+                <div class="customer-merge-controls">
+                    <select id="customer-merge-target" aria-label="Merge into customer"></select>
+                    <button type="button" class="setting-button setting-button--danger" id="customer-merge-button">
+                        Merge
+                    </button>
+                </div>
+            </div>
+        </div>
+    </dialog>
+
+
+    <script src="../js/api.js?v=20261021-2"></script>
+    <script src="../js/dashboard.js?v=20261021-2"></script>
 
 </body>
 </html>

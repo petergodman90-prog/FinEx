@@ -312,22 +312,54 @@ if (themeToggle) {
     }
 
     function handleAuthError(error) {
-        if (error && (error.status === 401 || error.status === 403)) {
+        // Only an expired/invalid session should leave the dashboard. A 403 is
+        // a role restriction and must be shown in place, not treated as logout.
+        if (error && error.status === 401) {
             window.location.replace("../index.html");
             return true;
         }
         return false;
     }
 
+    const ROLE_LEVELS = {
+        viewer: 1,
+        staff: 2,
+        manager: 3,
+        admin: 4,
+        owner: 5
+    };
+    let currentRole = "viewer";
     let activeWorkspaceId = "";
+    let customerQuery = "";
+    let customerCache = [];
+    let editingCustomer = null;
+
+    function hasAtLeast(minimumRole) {
+        return (ROLE_LEVELS[currentRole] || 0) >=
+            (ROLE_LEVELS[minimumRole] || Number.POSITIVE_INFINITY);
+    }
+
+    function applyRolePermissions() {
+        const customerForm = document.getElementById("customer-form");
+        if (customerForm) {
+            customerForm.hidden = !hasAtLeast("staff");
+        }
+
+        const proposalForm = document.getElementById("proposal-form");
+        if (proposalForm) {
+            proposalForm.hidden = !hasAtLeast("staff");
+        }
+    }
 
     async function loadMe() {
         const me = await API.request("/auth/me");
         const fullName = me.user.full_name || "Business Owner";
         const email = me.user.email || "No email on file";
         const firstName = fullName.split(/\s+/)[0];
-        const role = (me.role || "member").toLowerCase();
+        const role = (me.role || "viewer").toLowerCase();
         const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+        currentRole = role;
+        applyRolePermissions();
 
         setText("profile-name", fullName);
         setText("profile-avatar", fullName.charAt(0).toUpperCase());
@@ -402,14 +434,24 @@ if (themeToggle) {
         if (!body) {
             return;
         }
-        const page = await API.request("/customers?limit=50");
-        if (!page.items || page.items.length === 0) {
-            emptyRow(body, 4, "No customers yet. Add your first one above.");
+        const query = customerQuery
+            ? `&q=${encodeURIComponent(customerQuery)}`
+            : "";
+        const page = await API.request(`/customers?limit=50${query}`);
+        customerCache = page.items || [];
+        if (customerCache.length === 0) {
+            emptyRow(
+                body,
+                4,
+                customerQuery
+                    ? `No customers match "${customerQuery}".`
+                    : "No customers yet. Add your first one above."
+            );
             return;
         }
 
         body.replaceChildren();
-        page.items.forEach(function (customer) {
+        customerCache.forEach(function (customer) {
             const row = document.createElement("tr");
 
             const nameCell = document.createElement("td");
@@ -432,17 +474,242 @@ if (themeToggle) {
             const actionCell = document.createElement("td");
             const actions = document.createElement("div");
             actions.className = "live-table-actions";
-            const deleteButton = document.createElement("button");
-            deleteButton.type = "button";
-            deleteButton.textContent = "Delete";
-            deleteButton.addEventListener("click", function () {
-                deleteCustomer(customer);
-            });
-            actions.appendChild(deleteButton);
-            actionCell.appendChild(actions);
+
+            if (hasAtLeast("staff")) {
+                const editButton = document.createElement("button");
+                editButton.type = "button";
+                editButton.textContent = "Edit";
+                editButton.addEventListener("click", function () {
+                    openCustomerDialog(customer);
+                });
+                actions.appendChild(editButton);
+            }
+
+            if (hasAtLeast("manager")) {
+                const deleteButton = document.createElement("button");
+                deleteButton.type = "button";
+                deleteButton.textContent = "Delete";
+                deleteButton.addEventListener("click", function () {
+                    deleteCustomer(customer);
+                });
+                actions.appendChild(deleteButton);
+            }
+
+            if (actions.childElementCount === 0) {
+                actionCell.textContent = "View only";
+            } else {
+                actionCell.appendChild(actions);
+            }
 
             row.append(nameCell, contactCell, createdCell, actionCell);
             body.appendChild(row);
+        });
+    }
+
+    const customerDialog = document.getElementById("customer-dialog");
+    const customerEditForm = document.getElementById("customer-edit-form");
+    const customerEditError = document.getElementById("customer-edit-error");
+    const customerEditSave = document.getElementById("customer-edit-save");
+    const customerMergeTarget = document.getElementById("customer-merge-target");
+    const customerMergeButton = document.getElementById("customer-merge-button");
+
+    function setCustomerDialogError(text) {
+        if (!customerEditError) {
+            return;
+        }
+        customerEditError.textContent = text || "";
+        customerEditError.hidden = !text;
+    }
+
+    function closeCustomerDialog() {
+        if (!customerDialog) {
+            return;
+        }
+        if (typeof customerDialog.close === "function") {
+            customerDialog.close();
+        } else {
+            customerDialog.removeAttribute("open");
+        }
+    }
+
+    async function openCustomerDialog(customer) {
+        if (!customerDialog || !customerEditForm) {
+            return;
+        }
+        editingCustomer = customer;
+        setCustomerDialogError("");
+        document.getElementById("customer-edit-name").value = customer.name || "";
+        document.getElementById("customer-edit-email").value = customer.email || "";
+        document.getElementById("customer-edit-phone").value = customer.phone || "";
+        document.getElementById("customer-edit-company").value = customer.company || "";
+        document.getElementById("customer-edit-notes").value = customer.notes || "";
+        document.getElementById("customer-edit-tags").value =
+            (customer.tags || []).join(", ");
+
+        if (customerMergeTarget) {
+            customerMergeTarget.replaceChildren();
+            const placeholder = document.createElement("option");
+            placeholder.value = "";
+            placeholder.textContent = "Select a customer...";
+            customerMergeTarget.appendChild(placeholder);
+            customerMergeTarget.disabled = true;
+        }
+        if (customerMergeButton) {
+            customerMergeButton.disabled = true;
+        }
+
+        if (typeof customerDialog.showModal === "function") {
+            customerDialog.showModal();
+        } else {
+            customerDialog.setAttribute("open", "");
+        }
+        document.getElementById("customer-edit-name")?.focus();
+
+        try {
+            const page = await API.request("/customers?limit=100");
+            if (!customerMergeTarget || editingCustomer !== customer) {
+                return;
+            }
+            (page.items || []).forEach(function (item) {
+                if (item.id === customer.id) {
+                    return;
+                }
+                const option = document.createElement("option");
+                option.value = item.id;
+                option.textContent = item.company
+                    ? `${item.name} — ${item.company}`
+                    : item.name;
+                customerMergeTarget.appendChild(option);
+            });
+            customerMergeTarget.disabled = customerMergeTarget.options.length < 2;
+            if (customerMergeButton) {
+                customerMergeButton.disabled = customerMergeTarget.options.length < 2;
+            }
+        } catch (error) {
+            if (!handleAuthError(error)) {
+                setCustomerDialogError(
+                    error.message || "Could not load other customers for merge."
+                );
+            }
+        }
+    }
+
+    document.getElementById("customer-dialog-close")?.addEventListener(
+        "click",
+        closeCustomerDialog
+    );
+    document.getElementById("customer-edit-cancel")?.addEventListener(
+        "click",
+        closeCustomerDialog
+    );
+
+    if (customerDialog) {
+        customerDialog.addEventListener("click", function (event) {
+            if (event.target === customerDialog) {
+                closeCustomerDialog();
+            }
+        });
+        customerDialog.addEventListener("close", function () {
+            editingCustomer = null;
+            setCustomerDialogError("");
+        });
+    }
+
+    customerMergeTarget?.addEventListener("change", function () {
+        if (customerMergeButton) {
+            customerMergeButton.disabled = !this.value;
+        }
+    });
+
+    if (customerEditForm) {
+        customerEditForm.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            if (!editingCustomer) {
+                return;
+            }
+
+            const name = document.getElementById("customer-edit-name").value.trim();
+            const email = document.getElementById("customer-edit-email").value.trim();
+            const phone = document.getElementById("customer-edit-phone").value.trim();
+            const company = document.getElementById("customer-edit-company").value.trim();
+            const notes = document.getElementById("customer-edit-notes").value.trim();
+            const tags = document.getElementById("customer-edit-tags").value
+                .split(",")
+                .map(function (tag) {
+                    return tag.trim();
+                })
+                .filter(Boolean)
+                .slice(0, 20);
+
+            if (!name) {
+                setCustomerDialogError("Customer name is required.");
+                return;
+            }
+
+            customerEditSave.disabled = true;
+            setCustomerDialogError("");
+            try {
+                await API.request(`/customers/${editingCustomer.id}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({
+                        name: name,
+                        email: email || null,
+                        phone: phone || null,
+                        company: company,
+                        notes: notes,
+                        tags: tags
+                    })
+                });
+                closeCustomerDialog();
+                showMessage("Customer updated.");
+                await Promise.all([loadCustomers(), loadMetrics()]);
+            } catch (error) {
+                if (!handleAuthError(error)) {
+                    setCustomerDialogError(
+                        error.message || "Could not update this customer."
+                    );
+                }
+            } finally {
+                customerEditSave.disabled = false;
+            }
+        });
+    }
+
+    if (customerMergeButton) {
+        customerMergeButton.addEventListener("click", async function () {
+            if (!editingCustomer || !customerMergeTarget || !customerMergeTarget.value) {
+                return;
+            }
+            const targetOption =
+                customerMergeTarget.options[customerMergeTarget.selectedIndex];
+            const targetName = targetOption ? targetOption.textContent : "the selected customer";
+            const confirmed = window.confirm(
+                `Merge ${editingCustomer.name} into ${targetName}?\n\n` +
+                "This customer's history will move to the target and this record will be hidden."
+            );
+            if (!confirmed) {
+                return;
+            }
+
+            customerMergeButton.disabled = true;
+            setCustomerDialogError("");
+            try {
+                await API.request(`/customers/${editingCustomer.id}/merge`, {
+                    method: "POST",
+                    body: JSON.stringify({ target_id: customerMergeTarget.value })
+                });
+                closeCustomerDialog();
+                showMessage("Customer merged.");
+                await Promise.all([loadCustomers(), loadMetrics()]);
+            } catch (error) {
+                if (!handleAuthError(error)) {
+                    setCustomerDialogError(
+                        error.message || "Could not merge this customer."
+                    );
+                }
+            } finally {
+                customerMergeButton.disabled = false;
+            }
         });
     }
 
@@ -495,7 +762,7 @@ if (themeToggle) {
             statusCell.appendChild(pill);
 
             const actionCell = document.createElement("td");
-            if (proposal.status === "pending") {
+            if (proposal.status === "pending" && hasAtLeast("manager")) {
                 const actions = document.createElement("div");
                 actions.className = "live-table-actions";
 
@@ -515,6 +782,8 @@ if (themeToggle) {
 
                 actions.append(approveButton, rejectButton);
                 actionCell.appendChild(actions);
+            } else if (proposal.status === "pending") {
+                actionCell.textContent = "Awaiting approval";
             } else {
                 actionCell.textContent = "—";
             }
@@ -705,8 +974,16 @@ if (themeToggle) {
                 logoutError.hidden = true;
             }
 
+            const controller = new AbortController();
+            const timeout = window.setTimeout(function () {
+                controller.abort();
+            }, 8000);
+
             try {
-                await API.request("/auth/logout", { method: "POST" });
+                await API.request("/auth/logout", {
+                    method: "POST",
+                    signal: controller.signal
+                });
                 window.location.assign("../index.html");
             } catch (error) {
                 // An expired session still needs to leave the dashboard.
@@ -718,10 +995,13 @@ if (themeToggle) {
                 logoutConfirm.disabled = false;
                 logoutConfirm.textContent = "Sign out";
                 if (logoutError) {
-                    logoutError.textContent =
-                        error.message || "Could not sign out. Please try again.";
+                    logoutError.textContent = error.name === "AbortError"
+                        ? "Sign out timed out. Check your connection and try again."
+                        : error.message || "Could not sign out. Please try again.";
                     logoutError.hidden = false;
                 }
+            } finally {
+                window.clearTimeout(timeout);
             }
         });
     }
@@ -776,6 +1056,117 @@ if (themeToggle) {
             year: "numeric"
         });
     }
+
+    // Customer search: the API supports a server-side q filter, so search does
+    // not silently filter only the current page in the browser.
+    const dashboardSearch = document.getElementById("dashboard-search");
+    let searchTimer = null;
+
+    function runCustomerSearch() {
+        if (!dashboardSearch) {
+            return;
+        }
+        customerQuery = dashboardSearch.value.trim();
+        refreshPanel(loadCustomers);
+        if (customerQuery) {
+            document.getElementById("customers")?.scrollIntoView({
+                behavior: "smooth",
+                block: "start"
+            });
+        }
+    }
+
+    if (dashboardSearch) {
+        dashboardSearch.addEventListener("input", function () {
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(runCustomerSearch, 320);
+        });
+        dashboardSearch.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                window.clearTimeout(searchTimer);
+                runCustomerSearch();
+            } else if (event.key === "Escape" && dashboardSearch.value) {
+                dashboardSearch.value = "";
+                window.clearTimeout(searchTimer);
+                runCustomerSearch();
+            }
+        });
+    }
+
+    // Every sidebar destination must either exist or say plainly that it is not
+    // connected yet. This prevents links that look live but do nothing.
+    document.querySelectorAll(
+        ".sidebar-nav .nav-link[href^='#'], .sidebar-bottom .nav-link[href^='#']"
+    ).forEach(function (link) {
+        const targetId = link.getAttribute("href").slice(1);
+        if (!targetId || document.getElementById(targetId)) {
+            return;
+        }
+
+        if (!link.querySelector(".coming-soon")) {
+            const badge = document.createElement("span");
+            badge.className = "coming-soon coming-soon--dot";
+            badge.title = "Not connected yet";
+            badge.setAttribute("aria-label", "Not connected yet");
+            link.appendChild(badge);
+        }
+
+        link.addEventListener("click", function (event) {
+            event.preventDefault();
+            link.classList.remove("active");
+            const label = link.querySelector(".nav-label");
+            const name = label ? label.textContent.trim() : "This module";
+            showMessage(
+                `${name} is not connected yet. It will be enabled when its backend module lands.`
+            );
+        });
+    });
+
+    document.querySelectorAll(".quick-action[data-action]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            const action = button.dataset.action;
+            if (action === "product") {
+                showMessage(
+                    "Product and stock management is not connected yet. It depends on the ledger module."
+                );
+                return;
+            }
+            if (!hasAtLeast("staff")) {
+                showMessage("Your role can view proposals but cannot create them.", "error");
+                return;
+            }
+
+            const proposalFormElement = document.getElementById("proposal-form");
+            const typeInput = document.getElementById("proposal-type");
+            if (typeInput) {
+                typeInput.value = action === "expense" ? "expense" : "sale";
+            }
+            proposalFormElement?.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+            document.getElementById("proposal-title")?.focus();
+            showMessage(
+                action === "expense"
+                    ? "Complete the expense proposal. Approval is a separate step."
+                    : "Complete the sale proposal. Approval is a separate step."
+            );
+        });
+    });
+
+    document.getElementById("view-all-transactions")?.addEventListener(
+        "click",
+        function () {
+            document.getElementById("proposals")?.scrollIntoView({
+                behavior: "smooth",
+                block: "start"
+            });
+            showMessage(
+                "Approved proposals appear here. Ledger posting is still being connected."
+            );
+        }
+    );
 
     loadAll();
 })();

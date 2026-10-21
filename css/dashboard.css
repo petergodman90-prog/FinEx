@@ -3669,6 +3669,10 @@ select:focus-visible {
     border: 0;
 }
 
+.app-dialog--wide {
+    width: min(680px, calc(100vw - 32px));
+}
+
 .app-dialog::backdrop {
     background: rgba(2, 6, 23, 0.72);
     backdrop-filter: blur(4px);
@@ -3761,9 +3765,163 @@ select:focus-visible {
     padding: 10px 14px;
 }
 
+.app-dialog-card--wide {
+    width: min(620px, calc(100vw - 40px));
+    margin: 0 auto;
+}
+
+.app-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.app-form-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.app-form-grid label > span {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.app-form-grid input,
+.app-form-grid textarea,
+.customer-merge-controls select {
+    width: 100%;
+    padding: 10px 12px;
+
+    color: var(--text-primary);
+    background: rgba(148, 163, 184, 0.05);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+}
+
+.app-form-grid textarea {
+    min-height: 78px;
+    resize: vertical;
+}
+
+.app-form-grid input:focus,
+.app-form-grid textarea:focus,
+.customer-merge-controls select:focus {
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px var(--green-soft);
+}
+
+.app-form-full {
+    grid-column: 1 / -1;
+}
+
+.customer-merge-box {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+
+    margin-top: 18px;
+    padding-top: 18px;
+
+    border-top: 1px solid var(--border);
+}
+
+.customer-merge-box strong {
+    font-size: 12px;
+}
+
+.customer-merge-box p {
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.customer-merge-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 230px;
+}
+
+.customer-merge-controls select {
+    min-width: 140px;
+}
+
+@media (max-width: 640px) {
+    .app-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .app-form-full {
+        grid-column: 1;
+    }
+
+    .app-dialog-card--wide {
+        width: min(100%, calc(100vw - 24px));
+    }
+
+    .customer-merge-box {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .customer-merge-controls {
+        min-width: 0;
+    }
+}
+
 @media (max-width: 900px) {
     .settings-groups {
         grid-template-columns: 1fr;
         padding: 0 16px 18px;
     }
+}
+
+[hidden] {
+    display: none !important;
+}
+
+.coming-soon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+
+    margin-left: auto;
+    padding: 2px 6px;
+
+    color: var(--text-muted);
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 999px;
+
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.coming-soon--dot {
+    width: 6px;
+    height: 6px;
+    min-width: 6px;
+    padding: 0;
+
+    background: #fbbf24;
+    border: 0;
+    border-radius: 50%;
+}
+
+.sidebar-collapsed .nav-link .coming-soon {
+    display: none;
 }
