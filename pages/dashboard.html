@@ -395,7 +395,13 @@
                         </p>
                     </div>
 
-                    <button type="button" class="date-button" id="date-button">
+                    <button
+                        type="button"
+                        class="date-button"
+                        id="date-button"
+                        disabled
+                        title="Date filtering will be available when financial reporting is connected."
+                    >
                         <span aria-hidden="true">▦</span>
                         <span id="current-date">Today</span>
                         <span aria-hidden="true">⌄</span>
@@ -420,8 +426,9 @@
                     <input
                         type="search"
                         id="dashboard-search"
-                        placeholder="Search anything..."
-                        aria-label="Search dashboard"
+                        placeholder="Search will be available soon"
+                        aria-label="Search dashboard (not available yet)"
+                        disabled
                     >
                 </label>
 
@@ -875,34 +882,34 @@
 
                 <div class="section-heading">
                     <h3>Quick Actions</h3>
-                    <p>Get things done faster.</p>
+                    <p>Available when financial posting and product setup are connected.</p>
                 </div>
 
                 <div class="quick-actions-grid">
 
-                    <button type="button" class="quick-action" data-action="sale">
+                    <button type="button" class="quick-action" data-action="sale" disabled title="Sales posting is not connected yet.">
                         <span class="quick-action-icon">＋</span>
                         <span>
                             <strong>Record a Sale</strong>
-                            <small>Add a new sale</small>
+                            <small>Coming soon</small>
                         </span>
                         <span class="action-arrow">→</span>
                     </button>
 
-                    <button type="button" class="quick-action" data-action="expense">
+                    <button type="button" class="quick-action" data-action="expense" disabled title="Expense posting is not connected yet.">
                         <span class="quick-action-icon expense-action-icon">↘</span>
                         <span>
                             <strong>Add Expense</strong>
-                            <small>Track business spending</small>
+                            <small>Coming soon</small>
                         </span>
                         <span class="action-arrow">→</span>
                     </button>
 
-                    <button type="button" class="quick-action" data-action="product">
+                    <button type="button" class="quick-action" data-action="product" disabled title="Product setup is not connected yet.">
                         <span class="quick-action-icon product-action-icon">▤</span>
                         <span>
                             <strong>Add Product</strong>
-                            <small>Manage your stock</small>
+                            <small>Coming soon</small>
                         </span>
                         <span class="action-arrow">→</span>
                     </button>

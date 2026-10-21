@@ -256,7 +256,9 @@ if (themeToggle) {
     }
 
     const messageBox = document.getElementById("dashboard-message");
+    const proposalApproverRoles = new Set(["owner", "admin", "manager"]);
     let messageTimer = null;
+    let canApproveProposals = false;
 
     function showMessage(text, kind) {
         if (!messageBox) {
@@ -311,6 +313,32 @@ if (themeToggle) {
         body.appendChild(row);
     }
 
+    // A proposal is only posted after the backend supplies its journal entry.
+    // Until then, approval is an authorisation step rather than a financial event.
+    function describeProposalStatus(proposal) {
+        const status = String(proposal.status || "").toLowerCase();
+
+        if (proposal.posting_error || status === "posting_failed") {
+            return { label: "Posting failed — retry", tone: "posting-failed" };
+        }
+        if (status === "applied" && proposal.journal_entry_id) {
+            return { label: "Posted", tone: "applied" };
+        }
+        if (status === "approved" || status === "applied") {
+            return { label: "Approved — posting pending", tone: "approved" };
+        }
+        if (status === "pending") {
+            return { label: "Pending", tone: "pending" };
+        }
+        if (status === "rejected") {
+            return { label: "Rejected", tone: "rejected" };
+        }
+        if (status === "expired") {
+            return { label: "Expired", tone: "expired" };
+        }
+        return { label: "Status unavailable", tone: "unknown" };
+    }
+
     function handleAuthError(error) {
         if (error && (error.status === 401 || error.status === 403)) {
             window.location.replace("../index.html");
@@ -328,6 +356,7 @@ if (themeToggle) {
         const firstName = fullName.split(/\s+/)[0];
         const role = (me.role || "member").toLowerCase();
         const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+        canApproveProposals = proposalApproverRoles.has(role);
 
         setText("profile-name", fullName);
         setText("profile-avatar", fullName.charAt(0).toUpperCase());
@@ -452,7 +481,11 @@ if (themeToggle) {
                 method: "POST",
                 body: JSON.stringify({ note: "" })
             });
-            showMessage(`Proposal ${decision === "approve" ? "approved" : "rejected"}.`);
+            showMessage(
+                decision === "approve"
+                    ? "Proposal approved — posting is pending."
+                    : "Proposal rejected."
+            );
             await Promise.all([loadProposals(), loadMetrics()]);
         } catch (error) {
             if (!handleAuthError(error)) {
@@ -490,12 +523,13 @@ if (themeToggle) {
 
             const statusCell = document.createElement("td");
             const pill = document.createElement("span");
-            pill.className = `status-pill status-${proposal.status}`;
-            pill.textContent = proposal.status;
+            const status = describeProposalStatus(proposal);
+            pill.className = `status-pill status-${status.tone}`;
+            pill.textContent = status.label;
             statusCell.appendChild(pill);
 
             const actionCell = document.createElement("td");
-            if (proposal.status === "pending") {
+            if (proposal.status === "pending" && canApproveProposals) {
                 const actions = document.createElement("div");
                 actions.className = "live-table-actions";
 
@@ -515,6 +549,8 @@ if (themeToggle) {
 
                 actions.append(approveButton, rejectButton);
                 actionCell.appendChild(actions);
+            } else if (proposal.status === "pending") {
+                actionCell.textContent = "Authorised review required";
             } else {
                 actionCell.textContent = "—";
             }
