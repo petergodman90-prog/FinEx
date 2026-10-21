@@ -43,7 +43,9 @@ service; the UI displays backend-provided figures without recalculating them.
 4. Open <http://127.0.0.1:8000/>. The backend serves `index.html` and only the
    public `assets/`, `css/`, `js/` and `pages/` directories from the same origin
    as `/api/v1`. Browser sessions use `HttpOnly`, `SameSite=Lax` cookies, so no
-   tokens are stored in JavaScript and no CORS setup is needed.
+   tokens are stored in JavaScript and no CORS setup is needed. Expired access
+   cookies are refreshed silently through the HttpOnly refresh cookie, and
+   concurrent requests share a single refresh.
 
    Never serve the repository root with a generic static server: that would
    expose `.env`, `backend/` and `db/`. Set `SERVE_FRONTEND=false` only when a

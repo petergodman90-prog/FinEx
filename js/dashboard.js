@@ -4,6 +4,7 @@
 
 const dashboardLayout = document.querySelector(".dashboard-layout");
 const sidebarToggle = document.getElementById("sidebar-toggle");
+const compactSidebarToggle = document.getElementById("compact-sidebar-toggle");
 
 if (dashboardLayout && sidebarToggle) {
     const savedState = localStorage.getItem("finex-sidebar-collapsed");
@@ -31,6 +32,14 @@ if (dashboardLayout && sidebarToggle) {
             "title",
             isCollapsed ? "Expand sidebar" : "Collapse sidebar"
         );
+
+        if (compactSidebarToggle) {
+            compactSidebarToggle.checked = isCollapsed;
+            compactSidebarToggle.setAttribute(
+                "aria-checked",
+                String(isCollapsed)
+            );
+        }
 
         document.querySelectorAll(".nav-link").forEach((link) => {
             const label = link.querySelector(".nav-label");
@@ -68,6 +77,20 @@ if (dashboardLayout && sidebarToggle) {
 
         updateSidebarButton();
     });
+
+    if (compactSidebarToggle) {
+        compactSidebarToggle.addEventListener("change", function () {
+            dashboardLayout.classList.toggle(
+                "sidebar-collapsed",
+                this.checked
+            );
+            localStorage.setItem(
+                "finex-sidebar-collapsed",
+                String(this.checked)
+            );
+            updateSidebarButton();
+        });
+    }
 
     updateSidebarButton();
 }
@@ -296,10 +319,19 @@ if (themeToggle) {
         return false;
     }
 
+    let activeWorkspaceId = "";
+
     async function loadMe() {
         const me = await API.request("/auth/me");
-        const firstName = (me.user.full_name || "there").split(/\s+/)[0];
-        setText("profile-name", me.user.full_name || "Business Owner");
+        const fullName = me.user.full_name || "Business Owner";
+        const email = me.user.email || "No email on file";
+        const firstName = fullName.split(/\s+/)[0];
+        const role = (me.role || "member").toLowerCase();
+        const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+
+        setText("profile-name", fullName);
+        setText("profile-avatar", fullName.charAt(0).toUpperCase());
+        setText("profile-role", roleLabel);
 
         const welcome = document.querySelector(".welcome-section h2");
         if (welcome) {
@@ -310,10 +342,19 @@ if (themeToggle) {
             return item.org_id === me.active_org_id;
         });
         const orgName = membership ? membership.org_name : "Workspace";
-        const breadcrumb = document.querySelector(".breadcrumb");
-        if (breadcrumb) {
-            breadcrumb.textContent = `${orgName} /`;
-        }
+        activeWorkspaceId = me.active_org_id || "";
+
+        setText("workspace-name", orgName);
+        setText("settings-identity", `${fullName} · ${email}`);
+        setText("settings-role", roleLabel);
+        setText("settings-workspace", orgName);
+        setText("settings-workspace-id", activeWorkspaceId);
+        setText(
+            "settings-member-since",
+            formatDate(membership ? membership.joined_at : me.user.created_at)
+        );
+        setText("logout-dialog-identity", email);
+
         const description = document.querySelector(".welcome-description");
         if (description) {
             description.textContent = `Here's what's happening at ${orgName} today.`;
@@ -584,19 +625,147 @@ if (themeToggle) {
         });
     }
 
-    const logoutLink = document.getElementById("logout-link");
-    if (logoutLink) {
-        logoutLink.addEventListener("click", async function (event) {
+    const logoutDialog = document.getElementById("logout-dialog");
+    const logoutConfirm = document.getElementById("logout-confirm");
+    const logoutError = document.getElementById("logout-dialog-error");
+    let logoutBusy = false;
+
+    function openLogoutDialog(event) {
+        if (event) {
             event.preventDefault();
-            try {
-                await API.request("/auth/logout", { method: "POST" });
-            } catch (error) {
-                // Clear local navigation even if the session already expired.
-            } finally {
-                window.location.assign("../index.html");
+        }
+        if (!logoutDialog) {
+            return;
+        }
+        if (logoutError) {
+            logoutError.hidden = true;
+            logoutError.textContent = "";
+        }
+        if (typeof logoutDialog.showModal === "function") {
+            logoutDialog.showModal();
+        } else {
+            logoutDialog.setAttribute("open", "");
+        }
+        document.getElementById("logout-cancel")?.focus();
+    }
+
+    function closeLogoutDialog() {
+        if (!logoutDialog) {
+            return;
+        }
+        if (typeof logoutDialog.close === "function") {
+            logoutDialog.close();
+        } else {
+            logoutDialog.removeAttribute("open");
+        }
+    }
+
+    document.querySelectorAll("#logout-link, [data-logout-trigger]").forEach(
+        function (trigger) {
+            trigger.addEventListener("click", openLogoutDialog);
+        }
+    );
+
+    document.getElementById("logout-cancel")?.addEventListener(
+        "click",
+        closeLogoutDialog
+    );
+    document.getElementById("logout-dialog-close")?.addEventListener(
+        "click",
+        closeLogoutDialog
+    );
+
+    if (logoutDialog) {
+        logoutDialog.addEventListener("click", function (event) {
+            if (event.target === logoutDialog) {
+                closeLogoutDialog();
+            }
+        });
+        logoutDialog.addEventListener("close", function () {
+            if (logoutError) {
+                logoutError.hidden = true;
+                logoutError.textContent = "";
+            }
+            if (logoutConfirm && !logoutBusy) {
+                logoutConfirm.disabled = false;
+                logoutConfirm.textContent = "Sign out";
             }
         });
     }
+
+    if (logoutConfirm) {
+        logoutConfirm.addEventListener("click", async function () {
+            if (logoutBusy) {
+                return;
+            }
+            logoutBusy = true;
+            logoutConfirm.disabled = true;
+            logoutConfirm.textContent = "Signing out...";
+            if (logoutError) {
+                logoutError.hidden = true;
+            }
+
+            try {
+                await API.request("/auth/logout", { method: "POST" });
+                window.location.assign("../index.html");
+            } catch (error) {
+                // An expired session still needs to leave the dashboard.
+                if (error.status === 401) {
+                    window.location.assign("../index.html");
+                    return;
+                }
+                logoutBusy = false;
+                logoutConfirm.disabled = false;
+                logoutConfirm.textContent = "Sign out";
+                if (logoutError) {
+                    logoutError.textContent =
+                        error.message || "Could not sign out. Please try again.";
+                    logoutError.hidden = false;
+                }
+            }
+        });
+    }
+
+    const copyWorkspaceButton = document.getElementById("copy-workspace-id");
+    if (copyWorkspaceButton) {
+        copyWorkspaceButton.addEventListener("click", async function () {
+            if (!activeWorkspaceId) {
+                showMessage("Workspace ID is still loading.", "error");
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(activeWorkspaceId);
+                showMessage("Workspace ID copied.");
+            } catch (error) {
+                showMessage("Could not copy the workspace ID.", "error");
+            }
+        });
+    }
+
+    function openAccountSettings() {
+        const settings = document.getElementById("settings");
+        if (settings) {
+            settings.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    }
+
+    const profileSummary = document.getElementById("profile-summary");
+    if (profileSummary) {
+        profileSummary.addEventListener("click", openAccountSettings);
+        profileSummary.addEventListener("keydown", function (event) {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openAccountSettings();
+            }
+        });
+    }
+
+    document.getElementById("notification-button")?.addEventListener(
+        "click",
+        function () {
+            showMessage("You have no new notifications.");
+        }
+    );
 
     const dateElement = document.getElementById("current-date");
     if (dateElement) {
