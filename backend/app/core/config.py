@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     # the production default.  Set it only for local static-server development.
     CORS_ORIGINS: str = ""
 
+    # Serve the static UI from this process (same origin as /api/v1). This is
+    # convenient locally and avoids CORS; set false when nginx serves the UI.
+    SERVE_FRONTEND: bool = True
+    # Cookies are always HttpOnly + SameSite=Lax. Secure is forced when
+    # APP_ENV=production; set true explicitly for HTTPS outside that label.
+    COOKIE_SECURE: bool = False
+
     DATABASE_URL: str
     # Used by Alembic only; falls back to DATABASE_URL when unset. Point this
     # at an owner/migration role so the runtime app role can stay

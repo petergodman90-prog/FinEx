@@ -36,20 +36,21 @@ service; the UI displays backend-provided figures without recalculating them.
    python -m venv .venv; .\.venv\Scripts\activate
    pip install -r requirements.txt -r requirements-dev.txt
    alembic upgrade head
-   uvicorn app.main:app --reload        # http://127.0.0.1:8000/health
-   pytest -q                            # 52 tests; Postgres required, Redis faked
+   uvicorn app.main:app --reload        # UI + API: http://127.0.0.1:8000/
+   pytest -q                            # 63 tests; Postgres required, Redis faked
    ```
 
-4. Frontend: open `index.html` directly, or serve the repo root:
+4. Open <http://127.0.0.1:8000/>. The backend serves `index.html` and only the
+   public `assets/`, `css/`, `js/` and `pages/` directories from the same origin
+   as `/api/v1`. Browser sessions use `HttpOnly`, `SameSite=Lax` cookies, so no
+   tokens are stored in JavaScript and no CORS setup is needed. Expired access
+   cookies are refreshed silently through the HttpOnly refresh cookie, and
+   concurrent requests share a single refresh.
 
-   ```powershell
-   python -m http.server 5500
-   ```
-
-   The static server runs on a different port than the API, so local browser
-   calls need `CORS_ORIGINS=http://127.0.0.1:5500,http://localhost:5500` in
-   `.env` (already the placeholder default). In production, serve the UI and
-   proxy `/api` from the same origin and leave `CORS_ORIGINS` empty.
+   Never serve the repository root with a generic static server: that would
+   expose `.env`, `backend/` and `db/`. Set `SERVE_FRONTEND=false` only when a
+   reverse proxy serves the public frontend directories. In production, keep
+   the UI and `/api` on one HTTPS origin and leave `CORS_ORIGINS` empty.
 
 ## Database migrations
 

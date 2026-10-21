@@ -1,6 +1,6 @@
 # Backend Foundation (Layers 1–6)
 
-Status: complete and tested (52 tests green). Deferred by design: AI assistant
+Status: complete and tested (63 tests green). Deferred by design: AI assistant
 NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
 
 ## Layers
@@ -14,7 +14,11 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
   `assert_runtime_role_is_restricted` refuses to start if the connection role
   is `SUPERUSER` or has `BYPASSRLS`.
 - `app/main.py` — CORS is opt-in via `CORS_ORIGINS` and never a wildcard;
-  production serves the UI and API from one origin.
+  production serves the UI and API from one origin. With `SERVE_FRONTEND=true`
+  the backend serves only `index.html` and the public `assets/`, `css/`, `js/`
+  and `pages/` directories — never the repository root. Browser sessions use
+  `HttpOnly`, `SameSite=Lax` cookies (`app/core/cookies.py`); the JSON API also
+  keeps bearer-token support for non-browser clients.
 - `app/core/rls.py` — single source of truth for tenancy: GUC names,
   `bind_session_context(session, org_id=..., user_id=...)` (binds via
   `set_config(..., is_local => true)`), the policy SQL shared by the migration
@@ -69,7 +73,7 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
   views, rejects posting rows that do not match the transaction's org context,
   and grants `finex_app` SELECT + posting-function EXECUTE only.
 - `alembic check` is clean (models ↔ migration zero drift).
-- `backend/tests` (52 tests): auth flows, refresh rotation/revocation,
+- `backend/tests` (63 tests): auth flows, refresh rotation/revocation,
   customers CRUD/dedup/merge/permissions, proposal idempotency/caps/expiry,
   dashboard metrics, RBAC matrix, crypto (encrypt/blind index), RLS
   enabled+forced and cross-tenant isolation — including behavioral checks that
@@ -127,7 +131,12 @@ clears the tide.
   `BYPASSRLS`.
 - Leave `CORS_ORIGINS` empty and serve the UI plus `/api` from one HTTPS origin
   (reverse proxy), with HSTS, CSP, `X-Content-Type-Options` and
-  `Referrer-Policy`.
+  `Referrer-Policy`. Either keep `SERVE_FRONTEND=true` so the backend serves the
+  public UI, or set it false and let the proxy serve only those public files.
+  Never mount the repository root in a static server.
+- Cookies are forced `Secure` when `APP_ENV=production`; set
+  `COOKIE_SECURE=true` for any other HTTPS deployment. Keep `HttpOnly` and
+  `SameSite=Lax` — do not move tokens into `localStorage`.
 - Replace local JWT/PII keys; store them in a secret manager.
 - Configure automated encrypted backups with point-in-time recovery and test a
   restore before launch — see

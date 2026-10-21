@@ -16,28 +16,39 @@ from __future__ import annotations
 
 from typing import AsyncGenerator
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import context
 from app.core.auth import TokenPayload, decode_access_token
+from app.core.cookies import ACCESS_COOKIE
 from app.core.db import SessionLocal
 from app.core.rbac import check_permission
 from app.core.rls import bind_session_context
 from app.core.sessions import is_token_revoked, is_user_revoked
 
-_bearer = HTTPBearer(auto_error=True)
+# Missing credentials are handled here (401) so the API can also accept the
+# browser's HttpOnly cookie instead of an Authorization header.
+_bearer = HTTPBearer(auto_error=False)
 
 
 # ── Authentication ─────────────────────────────────────────
 
 
 async def get_current_user(
-    creds: HTTPAuthorizationCredentials = Depends(_bearer),
+    request: Request,
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> TokenPayload:
-    """Extract, decode, and validate the JWT bearer token."""
-    payload = decode_access_token(creds.credentials)
+    """Validate the JWT from the Authorization header or the session cookie."""
+    token = creds.credentials if creds else request.cookies.get(ACCESS_COOKIE)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    payload = decode_access_token(token)
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
