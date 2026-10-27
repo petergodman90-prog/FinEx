@@ -192,6 +192,34 @@ class OpeningStockPayload(_Payload):
     _normalise_effective_at = field_validator("effective_at")(_aware_utc)
 
 
+class CreditNoteLineInput(_Payload):
+    product_id: uuid.UUID | None = None
+    quantity: Decimal = Field(gt=0, max_digits=19, decimal_places=4)
+    unit_price: Decimal = Field(ge=0, max_digits=19, decimal_places=4)
+    unit_cost: Decimal | None = Field(default=None, ge=0, max_digits=19, decimal_places=4)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class CreditNotePayload(_Payload):
+    customer_id: uuid.UUID | None = None
+    currency: str | None = Field(
+        default=None, min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$"
+    )
+    effective_at: datetime
+    lines: list[CreditNoteLineInput] = Field(min_length=1)
+    original_receipt_id: uuid.UUID | None = None
+    restock: bool = True
+    refund_method: Literal["cash"] = "cash"
+    cash_account_code: str = CASH
+    notes: str | None = Field(default=None, max_length=2_000)
+    memo: str | None = Field(default=None, max_length=2_000)
+
+    _normalise_currency = field_validator("currency", mode="before")(
+        lambda value: _upper_currency(value) if value is not None else None
+    )
+    _normalise_effective_at = field_validator("effective_at")(_aware_utc)
+
+
 # ── Result ───────────────────────────────────────────────────
 
 
@@ -200,7 +228,9 @@ class PostingResult:
     journal_entry_id: uuid.UUID
     replayed: bool = False
     receipt_id: uuid.UUID | None = None
+    credit_note_id: uuid.UUID | None = None
     open_item_id: uuid.UUID | None = None
+    allocation_id: uuid.UUID | None = None
     stock_movement_ids: tuple[uuid.UUID, ...] = field(default_factory=tuple)
 
 
@@ -275,6 +305,20 @@ def _db_error(exc: DBAPIError) -> PostingError:
         return PostingValidationError(
             "The journal entry is unbalanced", code="unbalanced_entry"
         )
+    if "period end must not precede" in lowered:
+        return PostingValidationError(
+            "The period end must not precede its start", code="invalid_period"
+        )
+    if "accounting period was not found" in lowered:
+        return PostingValidationError(
+            "The accounting period does not exist in this organisation",
+            code="accounting_period_not_found",
+        )
+    if "exceeds the outstanding balance" in lowered:
+        return PostingValidationError(
+            "The settlement exceeds the outstanding balance",
+            code="invalid_settlement_amount",
+        )
     if "already been reversed" in lowered:
         return PostingConflictError(
             "The journal entry has already been reversed", code="already_reversed"
@@ -345,7 +389,40 @@ async def _existing_entry(
                              AND r.receipt_type = 'receipt'
                            ORDER BY r.receipt_number
                            LIMIT 1
-                       ) AS receipt_id
+                       ) AS receipt_id,
+                       (
+                           SELECT r.id
+                           FROM ledger.receipts r
+                           WHERE r.org_id = pe.org_id
+                             AND r.journal_entry_id = je.id
+                             AND r.receipt_type = 'credit_note'
+                           ORDER BY r.receipt_number
+                           LIMIT 1
+                       ) AS credit_note_id,
+                       (
+                           SELECT oi.id
+                           FROM ledger.open_items oi
+                           WHERE oi.org_id = pe.org_id
+                             AND oi.originating_journal_entry_id = je.id
+                           ORDER BY oi.created_at
+                           LIMIT 1
+                       ) AS originating_open_item_id,
+                       (
+                           SELECT pa.id
+                           FROM ledger.payment_allocations pa
+                           WHERE pa.org_id = pe.org_id
+                             AND pa.payment_journal_entry_id = je.id
+                           ORDER BY pa.created_at
+                           LIMIT 1
+                       ) AS allocation_id,
+                       (
+                           SELECT pa.open_item_id
+                           FROM ledger.payment_allocations pa
+                           WHERE pa.org_id = pe.org_id
+                             AND pa.payment_journal_entry_id = je.id
+                           ORDER BY pa.created_at
+                           LIMIT 1
+                       ) AS settled_open_item_id
                 FROM ledger.posting_events pe
                 JOIN ledger.journal_entries je ON je.posting_event_id = pe.id
                 WHERE pe.org_id = CAST(:org AS uuid)
@@ -361,6 +438,9 @@ async def _existing_entry(
         journal_entry_id=row.journal_entry_id,
         replayed=True,
         receipt_id=row.receipt_id,
+        credit_note_id=row.credit_note_id,
+        open_item_id=row.settled_open_item_id or row.originating_open_item_id,
+        allocation_id=row.allocation_id,
     )
 
 
@@ -643,7 +723,7 @@ async def _require_products(
     ids = [line.product_id for line in products]
     if len(ids) != len(set(ids)):
         raise PostingValidationError(
-            "A sale or opening-stock payload may contain each product only once",
+            "A payload may contain each product only once",
             code="duplicate_product_line",
         )
     found = await ledger_service.get_products(session, org_id, ids)
@@ -689,6 +769,96 @@ def _assert_declared_currency(payload_currency: str, declared: str | None) -> No
         )
 
 
+# ── Accounting periods ───────────────────────────────────────
+
+
+async def create_accounting_period(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    start: date,
+    end: date,
+    user_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    if end < start:
+        raise PostingValidationError(
+            "The period end must not precede its start",
+            code="invalid_period",
+        )
+    return await _run_setup(
+        session,
+        org_id,
+        text(
+            "SELECT ledger.create_accounting_period("
+            "CAST(:org AS uuid), CAST(:start AS date), CAST(:end AS date))"
+        ),
+        {"org": org_id, "start": start, "end": end},
+        user_id=user_id,
+    )
+
+
+async def set_accounting_period_state(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    start: date,
+    end: date,
+    closed: bool,
+    user_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    if end < start:
+        raise PostingValidationError(
+            "The period end must not precede its start",
+            code="invalid_period",
+        )
+    return await _run_setup(
+        session,
+        org_id,
+        text(
+            "SELECT ledger.set_accounting_period_state("
+            "CAST(:org AS uuid), CAST(:start AS date), CAST(:end AS date), :closed)"
+        ),
+        {"org": org_id, "start": start, "end": end, "closed": closed},
+        user_id=user_id,
+    )
+
+
+async def close_accounting_period(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    start: date,
+    end: date,
+    user_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    return await set_accounting_period_state(
+        session,
+        org_id,
+        start=start,
+        end=end,
+        closed=True,
+        user_id=user_id,
+    )
+
+
+async def reopen_accounting_period(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    start: date,
+    end: date,
+    user_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    return await set_accounting_period_state(
+        session,
+        org_id,
+        start=start,
+        end=end,
+        closed=False,
+        user_id=user_id,
+    )
+
+
 # ── Proposal dispatch ────────────────────────────────────────
 
 
@@ -719,6 +889,19 @@ async def post_proposal(
             org_id=org_id,
             proposal_id=proposal_id,
             payload=payload,
+            declared_amount=amount,
+            declared_currency=currency,
+            requested_by=requested_by,
+            role=role,
+        )
+    if kind == "credit_note":
+        return await post_credit_note(
+            session,
+            org_id=org_id,
+            payload=payload,
+            idempotency_key=proposal_id,
+            source_type="proposal",
+            source_id=proposal_id,
             declared_amount=amount,
             declared_currency=currency,
             requested_by=requested_by,
@@ -968,6 +1151,292 @@ async def post_sale(
     )
 
 
+# ── Credit notes ─────────────────────────────────────────────
+
+
+async def post_credit_note(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    payload: dict | None,
+    idempotency_key: uuid.UUID,
+    source_type: str = "credit_note",
+    source_id: uuid.UUID | None = None,
+    declared_amount: Decimal | str | None = None,
+    declared_currency: str | None = None,
+    requested_by: uuid.UUID | None = None,
+    role: str | None = None,
+) -> PostingResult:
+    credit = _parse(CreditNotePayload, payload, "credit note")
+    source_id = source_id or idempotency_key
+
+    async def operation() -> PostingResult:
+        await ensure_default_chart(session, org_id)
+
+        receipt = None
+        if credit.original_receipt_id is not None:
+            receipt = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT id,
+                               receipt_type::text AS receipt_type,
+                               currency_code::text AS currency_code,
+                               customer_id,
+                               total_amount
+                        FROM ledger.receipts
+                        WHERE org_id = CAST(:org AS uuid)
+                          AND id = CAST(:receipt AS uuid)
+                        """
+                    ),
+                    {"org": org_id, "receipt": credit.original_receipt_id},
+                )
+            ).one_or_none()
+            if receipt is None:
+                raise PostingValidationError(
+                    "The original receipt does not exist in this organisation",
+                    code="receipt_not_found",
+                    details={"receipt_id": str(credit.original_receipt_id)},
+                )
+            if receipt.receipt_type != "receipt":
+                raise PostingValidationError(
+                    "A credit note must reference a receipt, not another credit note",
+                    code="invalid_credit_note_source",
+                )
+
+        if receipt is not None:
+            if (
+                credit.customer_id is not None
+                and credit.customer_id != receipt.customer_id
+            ):
+                raise PostingValidationError(
+                    "The credit note customer does not match the receipt",
+                    code="customer_mismatch",
+                )
+            customer_id = credit.customer_id or receipt.customer_id
+            if (
+                credit.currency is not None
+                and credit.currency != receipt.currency_code
+            ):
+                raise PostingValidationError(
+                    "The credit note currency does not match the receipt",
+                    code="currency_mismatch",
+                )
+            currency = credit.currency or receipt.currency_code
+        else:
+            customer_id = credit.customer_id
+            currency = credit.currency
+
+        if customer_id is None:
+            raise PostingValidationError(
+                "A credit note requires a customer", code="invalid_credit_note"
+            )
+        if currency is None:
+            raise PostingValidationError(
+                "A credit note requires a currency", code="invalid_credit_note"
+            )
+
+        _assert_declared_currency(currency, declared_currency)
+        await _require_customer(session, org_id, customer_id)
+
+        revenue_total = _quantize(
+            sum(
+                (line.quantity * line.unit_price for line in credit.lines),
+                Decimal("0"),
+            )
+        )
+        if revenue_total <= 0:
+            raise PostingValidationError(
+                "A credit note must have a positive value",
+                code="invalid_credit_note_total",
+            )
+        _assert_declared_amount(revenue_total, declared_amount, label="credit note")
+
+        if receipt is not None:
+            prior_credits = _quantize(
+                await session.scalar(
+                    text(
+                        """
+                        SELECT coalesce(sum(total_amount), 0)
+                        FROM ledger.receipts
+                        WHERE org_id = CAST(:org AS uuid)
+                          AND credit_note_of_id = CAST(:receipt AS uuid)
+                          AND receipt_type = 'credit_note'
+                        """
+                    ),
+                    {"org": org_id, "receipt": receipt.id},
+                )
+                or Decimal("0")
+            )
+            receipt_total = _quantize(receipt.total_amount)
+            if prior_credits + revenue_total > receipt_total:
+                raise PostingValidationError(
+                    "The credit note exceeds the uncredited receipt value",
+                    code="invalid_credit_note_amount",
+                    details={
+                        "receipt_total": str(receipt_total),
+                        "already_credited": str(prior_credits),
+                        "requested": str(revenue_total),
+                    },
+                )
+
+        if credit.restock and any(
+            line.product_id is None or line.unit_cost is None for line in credit.lines
+        ):
+            raise PostingValidationError(
+                "Restocked credit-note lines require a product and a unit cost",
+                code="invalid_credit_note_line",
+            )
+        products = (
+            await _require_products(session, org_id, credit.lines)
+            if credit.restock
+            else {}
+        )
+        cost_total = _quantize(
+            sum(
+                (line.quantity * (line.unit_cost or Decimal("0")) for line in credit.lines),
+                Decimal("0"),
+            )
+        )
+
+        required = [SALES_REVENUE, credit.cash_account_code]
+        if credit.restock:
+            required.extend([INVENTORY, COGS])
+        accounts = await _require_accounts(session, org_id, required)
+
+        journal_lines = [
+            _line(
+                accounts[SALES_REVENUE].id,
+                debit=revenue_total,
+                description="Sales return",
+            ),
+            _line(
+                accounts[credit.cash_account_code].id,
+                credit=revenue_total,
+                description="Cash refund",
+            ),
+        ]
+        if credit.restock and cost_total > 0:
+            journal_lines.extend(
+                [
+                    _line(
+                        accounts[INVENTORY].id,
+                        debit=cost_total,
+                        description="Inventory returned",
+                    ),
+                    _line(
+                        accounts[COGS].id,
+                        credit=cost_total,
+                        description="Cost of goods returned",
+                    ),
+                ]
+            )
+
+        entry_id = await session.scalar(
+            text(
+                """
+                SELECT ledger.post_journal_entry(
+                    CAST(:org AS uuid), :source_type, CAST(:source AS uuid),
+                    CAST(:key AS uuid), CAST(:effective AS timestamptz),
+                    :memo, CAST(:lines AS jsonb), CAST(:requested_by AS uuid)
+                )
+                """
+            ),
+            {
+                "org": org_id,
+                "source_type": source_type,
+                "source": source_id,
+                "key": idempotency_key,
+                "effective": credit.effective_at,
+                "memo": credit.memo or "Credit note",
+                "lines": _json(journal_lines),
+                "requested_by": requested_by,
+            },
+        )
+
+        movement_ids: list[uuid.UUID] = []
+        if credit.restock:
+            for line in credit.lines:
+                product = products[line.product_id]
+                movement_id = await session.scalar(
+                    text(
+                        """
+                        SELECT ledger.post_stock_movement(
+                            CAST(:org AS uuid), CAST(:product AS uuid), CAST(:entry AS uuid),
+                            CAST('return_in' AS ledger.stock_movement_type),
+                            CAST(:quantity AS numeric), CAST(:cost AS numeric),
+                            :source_type, CAST(:source AS uuid),
+                            CAST(:occurred AS timestamptz), :note
+                        )
+                        """
+                    ),
+                    {
+                        "org": org_id,
+                        "product": line.product_id,
+                        "entry": entry_id,
+                        "quantity": _quantize(line.quantity),
+                        "cost": _quantize(line.unit_cost),
+                        "source_type": source_type,
+                        "source": source_id,
+                        "occurred": credit.effective_at,
+                        "note": line.description or f"Return of {product.sku}",
+                    },
+                )
+                movement_ids.append(movement_id)
+
+        document_lines = []
+        for index, line in enumerate(credit.lines, start=1):
+            product = products.get(line.product_id) if line.product_id else None
+            description = line.description or (
+                f"{product.sku} — {product.name}"
+                if product is not None
+                else f"Credit note item {index}"
+            )
+            document_lines.append(
+                {
+                    "description": description,
+                    "quantity": str(_quantize(line.quantity)),
+                    "unit_price": str(_quantize(line.unit_price)),
+                }
+            )
+
+        credit_note_id = await session.scalar(
+            text(
+                """
+                SELECT ledger.issue_credit_note(
+                    CAST(:org AS uuid), CAST(:entry AS uuid), CAST(:currency AS char(3)),
+                    CAST(:lines AS jsonb), CAST(:customer AS uuid), :notes,
+                    CAST(:original AS uuid)
+                )
+                """
+            ),
+            {
+                "org": org_id,
+                "entry": entry_id,
+                "currency": currency,
+                "lines": _json(document_lines),
+                "customer": customer_id,
+                "notes": credit.notes,
+                "original": credit.original_receipt_id,
+            },
+        )
+
+        return PostingResult(
+            journal_entry_id=entry_id,
+            credit_note_id=credit_note_id,
+            stock_movement_ids=tuple(movement_ids),
+        )
+
+    return await _run(
+        session,
+        org_id=org_id,
+        idempotency_key=idempotency_key,
+        operation=operation,
+        user_id=requested_by,
+        role=role,
+    )
+
+
 # ── Expenses ─────────────────────────────────────────────────
 
 
@@ -1096,6 +1565,314 @@ async def post_expense(
         session,
         org_id=org_id,
         idempotency_key=proposal_id,
+        operation=operation,
+        user_id=requested_by,
+        role=role,
+    )
+
+
+# ── Settlements ──────────────────────────────────────────────
+
+
+async def settle_open_item(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    open_item_id: uuid.UUID,
+    amount: Decimal | str,
+    effective_at: datetime,
+    idempotency_key: uuid.UUID,
+    cash_account_code: str = CASH,
+    currency: str | None = None,
+    issue_receipt: bool = False,
+    notes: str | None = None,
+    source_id: uuid.UUID | None = None,
+    requested_by: uuid.UUID | None = None,
+    role: str | None = None,
+) -> PostingResult:
+    """Settle a receivable or payable, optionally issuing a receipt."""
+    settlement_amount = _quantize(amount)
+    if settlement_amount <= 0:
+        raise PostingValidationError(
+            "A settlement must have a positive amount",
+            code="invalid_settlement_amount",
+        )
+
+    effective_at = _aware_utc(effective_at)
+    safe_currency = _upper_currency(currency) if currency else None
+    if safe_currency is not None and (
+        len(safe_currency) != 3 or not safe_currency.isalpha()
+    ):
+        raise PostingValidationError(
+            "A three letter currency code is required",
+            code="invalid_currency",
+        )
+    if issue_receipt and safe_currency is None:
+        raise PostingValidationError(
+            "A receipt requires a currency",
+            code="invalid_receipt_request",
+        )
+
+    source_id = source_id or idempotency_key
+
+    async def operation() -> PostingResult:
+        item = await ledger_service.get_open_item(session, org_id, open_item_id)
+        if item is None:
+            raise PostingValidationError(
+                "The open item does not exist in this organisation",
+                code="open_item_not_found",
+            )
+        outstanding = _quantize(item.outstanding_amount)
+        if outstanding <= 0:
+            raise PostingConflictError(
+                "The open item is already settled", code="open_item_settled"
+            )
+        if settlement_amount > outstanding:
+            raise PostingValidationError(
+                "The settlement exceeds the outstanding balance",
+                code="invalid_settlement_amount",
+                details={
+                    "outstanding": str(outstanding),
+                    "requested": str(settlement_amount),
+                },
+            )
+        if issue_receipt and item.item_type != "customer_receivable":
+            raise PostingValidationError(
+                "Only a customer receivable can issue a receipt",
+                code="invalid_receipt_request",
+            )
+
+        if item.item_type == "customer_receivable":
+            required = [RECEIVABLES, cash_account_code]
+        elif item.item_type == "supplier_payable":
+            required = [PAYABLES, cash_account_code]
+        else:
+            raise PostingValidationError(
+                "Unsupported open-item type",
+                code="invalid_open_item_type",
+                details={"item_type": item.item_type},
+            )
+        accounts = await _require_accounts(session, org_id, required)
+        cash_account = accounts[cash_account_code]
+
+        if item.item_type == "customer_receivable":
+            journal_lines = [
+                _line(
+                    cash_account.id,
+                    debit=settlement_amount,
+                    description="Payment received",
+                ),
+                _line(
+                    accounts[RECEIVABLES].id,
+                    credit=settlement_amount,
+                    description="Receivable settled",
+                ),
+            ]
+        else:
+            journal_lines = [
+                _line(
+                    accounts[PAYABLES].id,
+                    debit=settlement_amount,
+                    description="Payable settled",
+                ),
+                _line(
+                    cash_account.id,
+                    credit=settlement_amount,
+                    description="Payment made",
+                ),
+            ]
+
+        entry_id = await session.scalar(
+            text(
+                """
+                SELECT ledger.post_journal_entry(
+                    CAST(:org AS uuid), 'settlement', CAST(:source AS uuid),
+                    CAST(:key AS uuid), CAST(:effective AS timestamptz),
+                    :memo, CAST(:lines AS jsonb), CAST(:requested_by AS uuid)
+                )
+                """
+            ),
+            {
+                "org": org_id,
+                "source": source_id,
+                "key": idempotency_key,
+                "effective": effective_at,
+                "memo": notes or f"Settlement of {item.item_type}",
+                "lines": _json(journal_lines),
+                "requested_by": requested_by,
+            },
+        )
+
+        allocation_id = await session.scalar(
+            text(
+                """
+                SELECT ledger.allocate_payment(
+                    CAST(:org AS uuid), CAST(:item AS uuid),
+                    CAST(:entry AS uuid), CAST(:amount AS numeric), NULL
+                )
+                """
+            ),
+            {
+                "org": org_id,
+                "item": open_item_id,
+                "entry": entry_id,
+                "amount": settlement_amount,
+            },
+        )
+
+        receipt_id = None
+        if issue_receipt:
+            receipt_id = await session.scalar(
+                text(
+                    """
+                    SELECT ledger.issue_receipt(
+                        CAST(:org AS uuid), CAST(:entry AS uuid),
+                        CAST(:currency AS char(3)), CAST(:lines AS jsonb),
+                        CAST(:customer AS uuid), :notes
+                    )
+                    """
+                ),
+                {
+                    "org": org_id,
+                    "entry": entry_id,
+                    "currency": safe_currency,
+                    "lines": _json(
+                        [
+                            {
+                                "description": notes or "Payment received",
+                                "quantity": "1",
+                                "unit_price": str(settlement_amount),
+                            }
+                        ]
+                    ),
+                    "customer": item.counterparty_id,
+                    "notes": notes,
+                },
+            )
+
+        return PostingResult(
+            journal_entry_id=entry_id,
+            receipt_id=receipt_id,
+            open_item_id=open_item_id,
+            allocation_id=allocation_id,
+        )
+
+    return await _run(
+        session,
+        org_id=org_id,
+        idempotency_key=idempotency_key,
+        operation=operation,
+        user_id=requested_by,
+        role=role,
+    )
+
+
+async def reverse_settlement(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    allocation_id: uuid.UUID,
+    effective_at: datetime | None = None,
+    idempotency_key: uuid.UUID | None = None,
+    source_id: uuid.UUID | None = None,
+    requested_by: uuid.UUID | None = None,
+    role: str | None = None,
+) -> PostingResult:
+    """Reverse a settlement and reopen its open item; safe to retry."""
+    effective_at = effective_at or datetime.now(timezone.utc)
+    effective_at = _aware_utc(effective_at)
+    key = idempotency_key or allocation_id
+    source_id = source_id or allocation_id
+
+    async def operation() -> PostingResult:
+        row = (
+            await session.execute(
+                text(
+                    """
+                    SELECT pa.open_item_id, pa.payment_journal_entry_id, pa.amount,
+                           EXISTS (
+                               SELECT 1
+                               FROM ledger.payment_allocations rev
+                               WHERE rev.org_id = pa.org_id
+                                 AND rev.reversal_of_id = pa.id
+                           ) AS has_reversal
+                    FROM ledger.payment_allocations pa
+                    WHERE pa.org_id = CAST(:org AS uuid)
+                      AND pa.id = CAST(:id AS uuid)
+                    """
+                ),
+                {"org": org_id, "id": allocation_id},
+            )
+        ).one_or_none()
+        if row is None:
+            raise PostingValidationError(
+                "The settlement does not exist in this organisation",
+                code="settlement_not_found",
+            )
+
+        amount = Decimal(row.amount)
+        if amount <= 0:
+            raise PostingValidationError(
+                "Only a positive settlement can be reversed",
+                code="invalid_settlement_reversal",
+            )
+        if row.has_reversal:
+            raise PostingConflictError(
+                "The settlement has already been reversed",
+                code="settlement_already_reversed",
+            )
+
+        reversal_entry_id = await session.scalar(
+            text(
+                """
+                SELECT ledger.reverse_journal_entry(
+                    CAST(:org AS uuid), CAST(:original AS uuid),
+                    'settlement_reversal', CAST(:source AS uuid),
+                    CAST(:key AS uuid), CAST(:effective AS timestamptz),
+                    :memo, CAST(:requested_by AS uuid)
+                )
+                """
+            ),
+            {
+                "org": org_id,
+                "original": row.payment_journal_entry_id,
+                "source": source_id,
+                "key": key,
+                "effective": effective_at,
+                "memo": f"Reversal of settlement {allocation_id}",
+                "requested_by": requested_by,
+            },
+        )
+
+        reversal_allocation_id = await session.scalar(
+            text(
+                """
+                SELECT ledger.allocate_payment(
+                    CAST(:org AS uuid), CAST(:item AS uuid),
+                    CAST(:entry AS uuid), CAST(:amount AS numeric),
+                    CAST(:reversal_of AS uuid)
+                )
+                """
+            ),
+            {
+                "org": org_id,
+                "item": row.open_item_id,
+                "entry": reversal_entry_id,
+                "amount": -amount,
+                "reversal_of": allocation_id,
+            },
+        )
+
+        return PostingResult(
+            journal_entry_id=reversal_entry_id,
+            open_item_id=row.open_item_id,
+            allocation_id=reversal_allocation_id,
+        )
+
+    return await _run(
+        session,
+        org_id=org_id,
+        idempotency_key=key,
         operation=operation,
         user_id=requested_by,
         role=role,

@@ -144,6 +144,63 @@ Expense rules:
 - `amount` must be positive and must equal `proposals.amount` and
   `proposals.currency` when those fields are set.
 
+### Settlement
+
+Receivable and payable open items are settled through the posting service, not
+by editing an invoice or a receipt.
+
+```python
+result = await posting_service.settle_open_item(
+    session,
+    org_id=actor.org_id,
+    open_item_id=open_item_id,
+    amount="15.00",
+    effective_at=datetime(2026, 10, 22, 12, 0, tzinfo=timezone.utc),
+    idempotency_key=payment_id,
+    currency="NGN",
+    issue_receipt=True,
+    notes="Part payment",
+    requested_by=uuid.UUID(actor.sub),
+    role=actor.role,
+)
+result.journal_entry_id
+result.open_item_id
+result.allocation_id
+result.receipt_id
+```
+
+Settlement rules:
+
+- `amount` must be positive and may not exceed the outstanding balance. Partial
+  settlements are supported.
+- A `customer_receivable` settles as debit cash / credit `1100`. A
+  `supplier_payable` settles as debit `2000` / credit cash.
+- The cash account is selected with `cash_account_code` (default `1000`).
+- Only a customer receivable may issue a receipt, and it requires a currency.
+  The receipt is linked to the settlement journal entry; it does not create a
+  second journal entry.
+- A settlement and its allocation are written atomically. Retrying with the same
+  idempotency key returns the original journal entry, allocation and receipt.
+
+The corresponding reversal is:
+
+```python
+reversal = await posting_service.reverse_settlement(
+    session,
+    org_id=actor.org_id,
+    allocation_id=result.allocation_id,
+    effective_at=datetime(2026, 10, 23, 9, 0, tzinfo=timezone.utc),
+    idempotency_key=refund_id,
+    requested_by=uuid.UUID(actor.sub),
+    role=actor.role,
+)
+```
+
+Reversal posts the opposite journal entry and a negative allocation pointing at
+the original allocation, so the open item becomes outstanding again. It is
+idempotent. Reversing a settlement does not reverse its receipt; issuing a
+credit note is a separate posting.
+
 ### Opening stock
 
 Opening stock is how the first sale gets stock. It can be posted from an
@@ -216,6 +273,29 @@ The seeded chart contains 19 accounts:
 `ensure_default_chart` is safe to call on every posting and on workspace
 creation. Existing accounts are never modified.
 
+## Accounting periods
+
+Periods are inclusive date ranges. They are created open and can be closed or
+reopened through Person A's service:
+
+```python
+period_id = await posting_service.create_accounting_period(
+    session, actor.org_id, start=date(2026, 1, 1), end=date(2026, 1, 31)
+)
+await posting_service.close_accounting_period(
+    session, actor.org_id, start=date(2026, 1, 1), end=date(2026, 1, 31)
+)
+await posting_service.reopen_accounting_period(
+    session, actor.org_id, start=date(2026, 1, 1), end=date(2026, 1, 31)
+)
+```
+
+A posting whose effective date falls inside a closed period fails with
+`closed_period` and writes nothing. Reopening the period makes the retry
+succeed. Closing is idempotent; creating the exact same period twice is a
+`duplicate_posting` conflict. Reopening does not erase the historical
+`closed_at` value used for audit.
+
 ## Service API for Person B
 
 ```python
@@ -267,6 +347,13 @@ or **Posting failed — retry**.
 | `closed_period` | yes | Effective date is in a closed accounting period |
 | `already_reversed` | no | A different reversal already exists |
 | `manual_not_postable` | no | Manual proposals are informational only |
+| `invalid_period` | no | Period end precedes its start |
+| `accounting_period_not_found` | no | The exact period does not exist in this organisation |
+| `open_item_not_found` / `settlement_not_found` | no | The debt item or settlement is not in this organisation |
+| `open_item_settled` | no | The open item has no outstanding balance |
+| `invalid_settlement_amount` | no | Amount is zero, negative or above the outstanding balance |
+| `settlement_already_reversed` / `invalid_settlement_reversal` | no | The settlement cannot be reversed again, or is not a positive allocation |
+| `invalid_receipt_request` / `invalid_currency` | no | Receipt requested for a payable, missing currency, or malformed currency |
 | `posting_failed` | yes | Transient database failure; retry is safe |
 
 ## Concurrency and reversal
@@ -277,8 +364,9 @@ or **Posting failed — retry**.
 - Reversal posts the opposite journal entry with `reversal_of_id` set and posts
   the opposite stock movements (`sale_reversal` for sales). Repeating a reversal
   with the same idempotency key returns the original reversal entry.
-- This MVP reverses the journal and inventory effect only. Receipt credit notes
-  and settlement reversals are separate postings.
+- `reverse_posting` reverses the journal and inventory effect; use
+  `reverse_settlement` for a payment allocation. Receipt credit notes remain a
+  separate posting.
 
 ## Tenant context (enforced in the database)
 

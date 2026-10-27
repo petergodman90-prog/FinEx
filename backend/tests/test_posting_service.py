@@ -31,6 +31,7 @@ from app.core.rls import bind_session_context
 from app.schemas.auth import RegisterRequest
 from app.services import auth_service, ledger_service, posting_service
 from app.services.posting_service import (
+    PostingConflictError,
     PostingRetryableError,
     PostingValidationError,
 )
@@ -225,6 +226,54 @@ async def _post_sale(org: dict, proposal_id: uuid.UUID, payload: dict):
                 org_id=org["org_id"],
                 proposal_id=proposal_id,
                 proposal_type="sale",
+                payload=payload,
+                requested_by=org["user_id"],
+                role="owner",
+            )
+
+
+def _credit_payload(
+    product_id: uuid.UUID,
+    *,
+    customer_id: uuid.UUID | None = None,
+    currency: str | None = "NGN",
+    quantity: str = "1",
+    unit_price: str = "20.00",
+    unit_cost: str = "10.00",
+    original_receipt_id: uuid.UUID | None = None,
+    restock: bool = True,
+    effective_at: str = "2026-01-18T10:00:00Z",
+) -> dict:
+    payload = {
+        "effective_at": effective_at,
+        "lines": [
+            {
+                "product_id": str(product_id),
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "unit_cost": unit_cost,
+            }
+        ],
+        "restock": restock,
+    }
+    if customer_id is not None:
+        payload["customer_id"] = str(customer_id)
+    if currency is not None:
+        payload["currency"] = currency
+    if original_receipt_id is not None:
+        payload["original_receipt_id"] = str(original_receipt_id)
+    return payload
+
+
+async def _post_credit_note(org: dict, proposal_id: uuid.UUID, payload: dict):
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            return await posting_service.post_proposal(
+                session,
+                org_id=org["org_id"],
+                proposal_id=proposal_id,
+                proposal_type="credit_note",
                 payload=payload,
                 requested_by=org["user_id"],
                 role="owner",
@@ -454,6 +503,255 @@ async def test_receivable_sale_creates_open_item_without_receipt(org_factory) ->
     assert Decimal(row.original_amount) == Decimal("40.0000")
 
 
+async def test_credit_note_refunds_cash_and_returns_stock(org_factory) -> None:
+    org = await org_factory("CreditNote")
+    product_id = await _create_product(org)
+    customer_id = await _create_customer(org)
+    await _add_opening_stock(org, product_id, "10")
+    sale = await _post_sale(
+        org, uuid.uuid4(), _sale_payload(customer_id, product_id, quantity="2")
+    )
+    assert sale.receipt_id is not None
+    before = await _counts(org)
+
+    proposal_id = uuid.uuid4()
+    credit = await _post_credit_note(
+        org,
+        proposal_id,
+        _credit_payload(
+            product_id,
+            customer_id=None,
+            currency=None,
+            original_receipt_id=sale.receipt_id,
+        ),
+    )
+
+    assert credit.replayed is False
+    assert credit.credit_note_id is not None
+    assert credit.receipt_id is None
+    assert len(credit.stock_movement_ids) == 1
+
+    after = await _counts(org)
+    assert after["journal_entries"] == before["journal_entries"] + 1
+    assert after["journal_lines"] == before["journal_lines"] + 4
+    assert after["stock_movements"] == before["stock_movements"] + 1
+    assert after["receipts"] == before["receipts"] + 1
+    assert after["sale_lines"] == before["sale_lines"]
+    assert after["posting_events"] == before["posting_events"] + 1
+    assert Decimal(after["stock"]) == Decimal(before["stock"]) + Decimal("1")
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            lines = await ledger_service.get_journal_lines(
+                session, org["org_id"], credit.journal_entry_id
+            )
+            by_code = {line.account_code: line for line in lines}
+            document = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT receipt_type, total_amount, credit_note_of_id,
+                               customer_id, currency_code
+                        FROM ledger.receipts
+                        WHERE id = CAST(:id AS uuid)
+                        """
+                    ),
+                    {"id": credit.credit_note_id},
+                )
+            ).one()
+            movement = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT movement_type, quantity_delta, unit_cost
+                        FROM ledger.stock_movements
+                        WHERE id = CAST(:id AS uuid)
+                        """
+                    ),
+                    {"id": credit.stock_movement_ids[0]},
+                )
+            ).one()
+            stock = await ledger_service.stock_valuation(session, org["org_id"])
+
+    assert by_code["4000"].debit == Decimal("20")
+    assert by_code["4000"].credit == Decimal("0")
+    assert by_code["1000"].credit == Decimal("20")
+    assert by_code["1200"].debit == Decimal("10")
+    assert by_code["5000"].credit == Decimal("10")
+    assert sum(line.debit for line in lines) == sum(line.credit for line in lines) == Decimal(
+        "30"
+    )
+    assert document.receipt_type == "credit_note"
+    assert Decimal(document.total_amount) == Decimal("20.0000")
+    assert document.credit_note_of_id == sale.receipt_id
+    assert document.customer_id == customer_id
+    assert document.currency_code == "NGN"
+    assert movement.movement_type == "return_in"
+    assert Decimal(movement.quantity_delta) == Decimal("1.0000")
+    assert Decimal(movement.unit_cost) == Decimal("10.0000")
+    assert stock.rows[0].quantity_on_hand == Decimal("9")
+    assert stock.rows[0].book_value == Decimal("90")
+
+    replay = await _post_credit_note(
+        org,
+        proposal_id,
+        _credit_payload(
+            product_id,
+            customer_id=None,
+            currency=None,
+            original_receipt_id=sale.receipt_id,
+        ),
+    )
+    assert replay.replayed is True
+    assert replay.journal_entry_id == credit.journal_entry_id
+    assert replay.credit_note_id == credit.credit_note_id
+    assert await _counts(org) == after
+
+
+async def test_credit_note_without_restock_is_capped_by_receipt(org_factory) -> None:
+    org = await org_factory("CreditCap")
+    product_id = await _create_product(org)
+    customer_id = await _create_customer(org)
+    await _add_opening_stock(org, product_id, "10")
+    sale = await _post_sale(
+        org, uuid.uuid4(), _sale_payload(customer_id, product_id, quantity="2")
+    )
+    assert sale.receipt_id is not None
+    before = await _counts(org)
+
+    first = await _post_credit_note(
+        org,
+        uuid.uuid4(),
+        _credit_payload(
+            product_id,
+            customer_id=customer_id,
+            original_receipt_id=sale.receipt_id,
+            restock=False,
+        ),
+    )
+    assert first.credit_note_id is not None
+    after_first = await _counts(org)
+    assert after_first["stock_movements"] == before["stock_movements"]
+    assert after_first["stock"] == before["stock"]
+    assert after_first["journal_lines"] == before["journal_lines"] + 2
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            lines = await ledger_service.get_journal_lines(
+                session, org["org_id"], first.journal_entry_id
+            )
+    assert {line.account_code for line in lines} == {"1000", "4000"}
+
+    second = await _post_credit_note(
+        org,
+        uuid.uuid4(),
+        _credit_payload(
+            product_id,
+            customer_id=customer_id,
+            original_receipt_id=sale.receipt_id,
+            restock=False,
+        ),
+    )
+    assert second.credit_note_id is not None
+
+    before_rejection = await _counts(org)
+    with pytest.raises(PostingValidationError) as excinfo:
+        await _post_credit_note(
+            org,
+            uuid.uuid4(),
+            _credit_payload(
+                product_id,
+                customer_id=customer_id,
+                original_receipt_id=sale.receipt_id,
+                quantity="0.01",
+                unit_price="20.00",
+                restock=False,
+            ),
+        )
+    assert excinfo.value.code == "invalid_credit_note_amount"
+    assert await _counts(org) == before_rejection
+
+
+async def test_credit_note_source_and_reference_guards(org_factory) -> None:
+    org_a = await org_factory("CreditSourceA")
+    org_b = await org_factory("CreditSourceB")
+    product_id = await _create_product(org_a)
+    customer_id = await _create_customer(org_a)
+    other_customer_id = await _create_customer(org_a)
+    await _add_opening_stock(org_a, product_id, "10")
+    sale = await _post_sale(
+        org_a, uuid.uuid4(), _sale_payload(customer_id, product_id)
+    )
+    assert sale.receipt_id is not None
+
+    with pytest.raises(PostingValidationError) as excinfo:
+        await _post_credit_note(
+            org_b,
+            uuid.uuid4(),
+            _credit_payload(
+                product_id,
+                customer_id=None,
+                currency=None,
+                original_receipt_id=sale.receipt_id,
+            ),
+        )
+    assert excinfo.value.code == "receipt_not_found"
+
+    credit = await _post_credit_note(
+        org_a,
+        uuid.uuid4(),
+        _credit_payload(
+            product_id,
+            customer_id=None,
+            currency=None,
+            original_receipt_id=sale.receipt_id,
+        ),
+    )
+    assert credit.credit_note_id is not None
+    before = await _counts(org_a)
+
+    with pytest.raises(PostingValidationError) as excinfo:
+        await _post_credit_note(
+            org_a,
+            uuid.uuid4(),
+            _credit_payload(
+                product_id,
+                customer_id=None,
+                currency=None,
+                original_receipt_id=credit.credit_note_id,
+            ),
+        )
+    assert excinfo.value.code == "invalid_credit_note_source"
+
+    with pytest.raises(PostingValidationError) as excinfo:
+        await _post_credit_note(
+            org_a,
+            uuid.uuid4(),
+            _credit_payload(
+                product_id,
+                customer_id=other_customer_id,
+                original_receipt_id=sale.receipt_id,
+            ),
+        )
+    assert excinfo.value.code == "customer_mismatch"
+
+    with pytest.raises(PostingValidationError) as excinfo:
+        await _post_credit_note(
+            org_a,
+            uuid.uuid4(),
+            _credit_payload(
+                product_id,
+                customer_id=customer_id,
+                currency="USD",
+                original_receipt_id=sale.receipt_id,
+            ),
+        )
+    assert excinfo.value.code == "currency_mismatch"
+    assert await _counts(org_a) == before
+
+
 async def test_expense_cash_and_payable(org_factory) -> None:
     org = await org_factory("Expense")
     await _create_customer(org)
@@ -536,21 +834,17 @@ async def test_closed_period_rejected_without_partial_writes(org_factory) -> Non
 
     async with SessionLocal() as session:
         async with session.begin():
-            await _bind(session, org)
-            await session.execute(
-                text(
-                    "SELECT ledger.create_accounting_period("
-                    "CAST(:org AS uuid), CAST('2026-01-01' AS date), CAST('2026-01-31' AS date))"
-                ),
-                {"org": org["org_id"]},
+            await posting_service.create_accounting_period(
+                session,
+                org["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 1, 31),
             )
-            await session.execute(
-                text(
-                    "SELECT ledger.set_accounting_period_state("
-                    "CAST(:org AS uuid), CAST('2026-01-01' AS date), "
-                    "CAST('2026-01-31' AS date), true)"
-                ),
-                {"org": org["org_id"]},
+            await posting_service.close_accounting_period(
+                session,
+                org["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 1, 31),
             )
 
     with pytest.raises(PostingRetryableError) as excinfo:
@@ -563,6 +857,73 @@ async def test_closed_period_rejected_without_partial_writes(org_factory) -> Non
         )
     assert excinfo.value.code == "closed_period"
     assert await _counts(org) == before
+
+
+async def test_accounting_period_state_is_validated_and_reopenable(org_factory) -> None:
+    org = await org_factory("PeriodState")
+
+    with pytest.raises(PostingValidationError) as excinfo:
+        async with SessionLocal() as session:
+            async with session.begin():
+                await posting_service.create_accounting_period(
+                    session,
+                    org["org_id"],
+                    start=date(2026, 2, 1),
+                    end=date(2026, 1, 1),
+                )
+    assert excinfo.value.code == "invalid_period"
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            period_id = await posting_service.create_accounting_period(
+                session,
+                org["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 1, 31),
+            )
+            with pytest.raises(PostingConflictError) as excinfo:
+                await posting_service.create_accounting_period(
+                    session,
+                    org["org_id"],
+                    start=date(2026, 1, 1),
+                    end=date(2026, 1, 31),
+                )
+    assert excinfo.value.code == "duplicate_posting"
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            first_close = await posting_service.close_accounting_period(
+                session,
+                org["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 1, 31),
+            )
+            second_close = await posting_service.close_accounting_period(
+                session,
+                org["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 1, 31),
+            )
+            await posting_service.reopen_accounting_period(
+                session,
+                org["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 1, 31),
+            )
+            periods = await ledger_service.list_accounting_periods(
+                session, org["org_id"]
+            )
+            with pytest.raises(PostingValidationError) as excinfo:
+                await posting_service.set_accounting_period_state(
+                    session,
+                    org["org_id"],
+                    start=date(2026, 2, 1),
+                    end=date(2026, 2, 28),
+                    closed=True,
+                )
+    assert first_close == second_close == period_id
+    assert periods[0]["is_closed"] is False
+    assert excinfo.value.code == "accounting_period_not_found"
 
 
 async def test_cross_organisation_customer_and_account_rejected(org_factory) -> None:
@@ -962,3 +1323,241 @@ async def test_debt_aging_is_org_scoped(org_factory) -> None:
     assert sum(
         (bucket.outstanding_amount for bucket in payable_a.buckets), Decimal("0")
     ) == payable_a.total_outstanding
+
+
+# ── Settlements ──────────────────────────────────────────────
+
+
+async def test_receivable_settlement_partial_receipt_and_replay(org_factory) -> None:
+    org = await org_factory("SettlementReceivable")
+    product_id = await _create_product(org)
+    customer_id = await _create_customer(org)
+    await _add_opening_stock(org, product_id, "10")
+
+    sale = await _post_sale(
+        org,
+        uuid.uuid4(),
+        _sale_payload(customer_id, product_id, method="receivable"),
+    )
+    assert sale.open_item_id is not None
+
+    key = uuid.uuid4()
+    async with SessionLocal() as session:
+        async with session.begin():
+            settlement = await posting_service.settle_open_item(
+                session,
+                org_id=org["org_id"],
+                open_item_id=sale.open_item_id,
+                amount="15.00",
+                effective_at=datetime(2026, 1, 20, tzinfo=timezone.utc),
+                idempotency_key=key,
+                currency="NGN",
+                issue_receipt=True,
+                notes="Part payment",
+                requested_by=org["user_id"],
+            )
+
+    assert settlement.replayed is False
+    assert settlement.open_item_id == sale.open_item_id
+    assert settlement.allocation_id is not None
+    assert settlement.receipt_id is not None
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            item = await ledger_service.get_open_item(
+                session, org["org_id"], sale.open_item_id
+            )
+            lines = await ledger_service.get_journal_lines(
+                session, org["org_id"], settlement.journal_entry_id
+            )
+            receipt = await ledger_service.get_receipt(
+                session, org["org_id"], settlement.receipt_id
+            )
+
+    assert item is not None
+    assert item.outstanding_amount == Decimal("25")
+    by_code = {line.account_code: line for line in lines}
+    assert by_code["1000"].debit == Decimal("15")
+    assert by_code["1000"].credit == Decimal("0")
+    assert by_code["1100"].debit == Decimal("0")
+    assert by_code["1100"].credit == Decimal("15")
+    assert receipt is not None
+    assert receipt.receipt_type == "receipt"
+    assert receipt.total_amount == Decimal("15")
+
+    after = await _counts(org)
+    replay = await _settle(
+        org,
+        sale.open_item_id,
+        amount="15.00",
+        key=key,
+        issue_receipt=True,
+        currency="NGN",
+    )
+    assert replay.replayed is True
+    assert replay.journal_entry_id == settlement.journal_entry_id
+    assert replay.allocation_id == settlement.allocation_id
+    assert replay.receipt_id == settlement.receipt_id
+    assert await _counts(org) == after
+
+    with pytest.raises(PostingValidationError) as excinfo:
+        await _settle(org, sale.open_item_id, amount="26.00", key=uuid.uuid4())
+    assert excinfo.value.code == "invalid_settlement_amount"
+    assert await _counts(org) == after
+
+
+async def test_payable_settlement_and_receipt_guard(org_factory) -> None:
+    org = await org_factory("SettlementPayable")
+    supplier_id = await _create_supplier(org)
+    expense = await _post_expense(
+        org,
+        amount="25.00",
+        method="payable",
+        supplier_id=supplier_id,
+    )
+    assert expense.open_item_id is not None
+    before = await _counts(org)
+
+    with pytest.raises(PostingValidationError) as excinfo:
+        await _settle(
+            org,
+            expense.open_item_id,
+            amount="25.00",
+            issue_receipt=True,
+            currency="NGN",
+        )
+    assert excinfo.value.code == "invalid_receipt_request"
+    assert await _counts(org) == before
+
+    settlement = await _settle(
+        org, expense.open_item_id, amount="25.00", effective_at="2026-01-21T12:00:00Z"
+    )
+    assert settlement.receipt_id is None
+    assert settlement.allocation_id is not None
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            item = await ledger_service.get_open_item(
+                session, org["org_id"], expense.open_item_id
+            )
+            lines = await ledger_service.get_journal_lines(
+                session, org["org_id"], settlement.journal_entry_id
+            )
+    assert item is not None
+    assert item.outstanding_amount == Decimal("0")
+    by_code = {line.account_code: line for line in lines}
+    assert by_code["2000"].debit == Decimal("25")
+    assert by_code["1000"].credit == Decimal("25")
+
+
+async def test_reverse_settlement_reopens_item_and_is_idempotent(org_factory) -> None:
+    org = await org_factory("SettlementReversal")
+    product_id = await _create_product(org)
+    customer_id = await _create_customer(org)
+    await _add_opening_stock(org, product_id, "10")
+
+    sale = await _post_sale(
+        org,
+        uuid.uuid4(),
+        _sale_payload(customer_id, product_id, method="receivable"),
+    )
+    settlement = await _settle(
+        org, sale.open_item_id, amount="40.00", effective_at="2026-01-20T12:00:00Z"
+    )
+    assert settlement.allocation_id is not None
+
+    key = uuid.uuid4()
+    async with SessionLocal() as session:
+        async with session.begin():
+            reversal = await posting_service.reverse_settlement(
+                session,
+                org_id=org["org_id"],
+                allocation_id=settlement.allocation_id,
+                effective_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+                idempotency_key=key,
+                requested_by=org["user_id"],
+            )
+
+    assert reversal.replayed is False
+    assert reversal.open_item_id == sale.open_item_id
+    assert reversal.allocation_id is not None
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            item = await ledger_service.get_open_item(
+                session, org["org_id"], sale.open_item_id
+            )
+            lines = await ledger_service.get_journal_lines(
+                session, org["org_id"], reversal.journal_entry_id
+            )
+            allocation = (
+                await session.execute(
+                    text(
+                        "SELECT amount, reversal_of_id FROM ledger.payment_allocations "
+                        "WHERE id = CAST(:id AS uuid)"
+                    ),
+                    {"id": reversal.allocation_id},
+                )
+            ).one()
+    assert item is not None
+    assert item.outstanding_amount == Decimal("40")
+    by_code = {line.account_code: line for line in lines}
+    assert by_code["1100"].debit == Decimal("40")
+    assert by_code["1000"].credit == Decimal("40")
+    assert Decimal(allocation.amount) == Decimal("-40")
+    assert allocation.reversal_of_id == settlement.allocation_id
+
+    replay = await _reverse_settlement(org, settlement.allocation_id, key)
+    assert replay.replayed is True
+    assert replay.journal_entry_id == reversal.journal_entry_id
+    assert replay.allocation_id == reversal.allocation_id
+
+    with pytest.raises(PostingConflictError) as excinfo:
+        await _reverse_settlement(org, settlement.allocation_id, uuid.uuid4())
+    assert excinfo.value.code == "settlement_already_reversed"
+
+
+async def _settle(
+    org: dict,
+    open_item_id: uuid.UUID,
+    *,
+    amount: str,
+    key: uuid.UUID | None = None,
+    effective_at: str = "2026-01-20T12:00:00Z",
+    issue_receipt: bool = False,
+    currency: str | None = None,
+):
+    async with SessionLocal() as session:
+        async with session.begin():
+            return await posting_service.settle_open_item(
+                session,
+                org_id=org["org_id"],
+                open_item_id=open_item_id,
+                amount=amount,
+                effective_at=datetime.fromisoformat(
+                    effective_at.replace("Z", "+00:00")
+                ),
+                idempotency_key=key or uuid.uuid4(),
+                currency=currency,
+                issue_receipt=issue_receipt,
+                requested_by=org["user_id"],
+            )
+
+
+async def _reverse_settlement(
+    org: dict,
+    allocation_id: uuid.UUID,
+    key: uuid.UUID,
+):
+    async with SessionLocal() as session:
+        async with session.begin():
+            return await posting_service.reverse_settlement(
+                session,
+                org_id=org["org_id"],
+                allocation_id=allocation_id,
+                idempotency_key=key,
+                requested_by=org["user_id"],
+            )

@@ -143,7 +143,7 @@ BEGIN
         FROM jsonb_array_elements(p_lines)
     )
     SELECT
-        bool_or(a.account_type = 'revenue'),
+        bool_or(a.account_type = 'revenue' AND p.credit > 0),
         bool_or(a.account_type = 'cogs'),
         bool_or(a.account_type = 'asset' AND p.credit > 0)
       INTO v_has_revenue, v_has_cogs, v_has_asset_credit
