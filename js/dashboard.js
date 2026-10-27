@@ -267,7 +267,13 @@ if (themeToggle) {
     }
 
     const messageBox = document.getElementById("dashboard-message");
+    const proposalApproverRoles = new Set(["owner", "admin", "manager"]);
+    const customerWriterRoles = new Set(["owner", "admin", "manager", "staff"]);
+    const customerDeleterRoles = new Set(["owner", "admin", "manager"]);
     let messageTimer = null;
+    let canApproveProposals = false;
+    let canWriteCustomers = false;
+    let canDeleteCustomers = false;
 
     function showMessage(text, kind) {
         if (!messageBox) {
@@ -322,6 +328,32 @@ if (themeToggle) {
         body.appendChild(row);
     }
 
+    // A proposal is only posted after the backend supplies its journal entry.
+    // Until then, approval is an authorisation step rather than a financial event.
+    function describeProposalStatus(proposal) {
+        const status = String(proposal.status || "").toLowerCase();
+
+        if (proposal.posting_error || status === "posting_failed") {
+            return { label: "Posting failed — retry", tone: "posting-failed" };
+        }
+        if (status === "applied" && proposal.journal_entry_id) {
+            return { label: "Posted", tone: "applied" };
+        }
+        if (status === "approved" || status === "applied") {
+            return { label: "Approved — posting pending", tone: "approved" };
+        }
+        if (status === "pending") {
+            return { label: "Pending", tone: "pending" };
+        }
+        if (status === "rejected") {
+            return { label: "Rejected", tone: "rejected" };
+        }
+        if (status === "expired") {
+            return { label: "Expired", tone: "expired" };
+        }
+        return { label: "Status unavailable", tone: "unknown" };
+    }
+
     function handleAuthError(error) {
         if (error && (error.status === 401 || error.status === 403)) {
             window.location.replace("../index.html");
@@ -331,6 +363,7 @@ if (themeToggle) {
     }
 
     let activeWorkspaceId = "";
+    let customerSearchTimer = null;
 
     async function loadMe() {
         const me = await API.request("/auth/me");
@@ -339,6 +372,9 @@ if (themeToggle) {
         const firstName = fullName.split(/\s+/)[0];
         const role = (me.role || "member").toLowerCase();
         const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+        canApproveProposals = proposalApproverRoles.has(role);
+        canWriteCustomers = customerWriterRoles.has(role);
+        canDeleteCustomers = customerDeleterRoles.has(role);
 
         setText("profile-name", fullName);
         setText("profile-avatar", fullName.charAt(0).toUpperCase());
@@ -408,14 +444,28 @@ if (themeToggle) {
         }
     }
 
+    function customerSearchQuery() {
+        const search = document.getElementById("customer-search");
+        return search ? search.value.trim() : "";
+    }
+
     async function loadCustomers() {
         const body = document.getElementById("customers-body");
         if (!body) {
             return;
         }
-        const page = await API.request("/customers?limit=50");
+        const parameters = new URLSearchParams({ limit: "50" });
+        const query = customerSearchQuery();
+        if (query) {
+            parameters.set("q", query);
+        }
+        const page = await API.request(`/customers?${parameters.toString()}`);
         if (!page.items || page.items.length === 0) {
-            emptyRow(body, 4, "No customers yet. Add your first one above.");
+            emptyRow(
+                body,
+                4,
+                query ? "No customers match your search." : "No customers yet. Add your first one above."
+            );
             return;
         }
 
@@ -443,18 +493,49 @@ if (themeToggle) {
             const actionCell = document.createElement("td");
             const actions = document.createElement("div");
             actions.className = "live-table-actions";
-            const deleteButton = document.createElement("button");
-            deleteButton.type = "button";
-            deleteButton.textContent = "Delete";
-            deleteButton.addEventListener("click", function () {
-                deleteCustomer(customer);
-            });
-            actions.appendChild(deleteButton);
-            actionCell.appendChild(actions);
+            if (canWriteCustomers) {
+                const editButton = document.createElement("button");
+                editButton.type = "button";
+                editButton.textContent = "Edit";
+                editButton.addEventListener("click", function () {
+                    openCustomerEditor(customer);
+                });
+                actions.appendChild(editButton);
+            }
+            if (canDeleteCustomers) {
+                const deleteButton = document.createElement("button");
+                deleteButton.type = "button";
+                deleteButton.textContent = "Delete";
+                deleteButton.addEventListener("click", function () {
+                    deleteCustomer(customer);
+                });
+                actions.appendChild(deleteButton);
+            }
+            if (actions.childElementCount === 0) {
+                actionCell.textContent = "View only";
+            } else {
+                actionCell.appendChild(actions);
+            }
 
             row.append(nameCell, contactCell, createdCell, actionCell);
             body.appendChild(row);
         });
+    }
+
+    function openCustomerEditor(customer) {
+        const dialog = document.getElementById("customer-editor-dialog");
+        if (!dialog) {
+            return;
+        }
+        document.getElementById("customer-editor-id").value = customer.id;
+        document.getElementById("customer-editor-name").value = customer.name || "";
+        document.getElementById("customer-editor-company").value = customer.company || "";
+        document.getElementById("customer-editor-email").value = customer.email || "";
+        document.getElementById("customer-editor-phone").value = customer.phone || "";
+        document.getElementById("customer-editor-tags").value = (customer.tags || []).join(", ");
+        document.getElementById("customer-editor-notes").value = customer.notes || "";
+        dialog.showModal();
+        document.getElementById("customer-editor-name").focus();
     }
 
     async function decideProposal(proposal, decision) {
@@ -463,7 +544,11 @@ if (themeToggle) {
                 method: "POST",
                 body: JSON.stringify({ note: "" })
             });
-            showMessage(`Proposal ${decision === "approve" ? "approved" : "rejected"}.`);
+            showMessage(
+                decision === "approve"
+                    ? "Proposal approved — posting is pending."
+                    : "Proposal rejected."
+            );
             await Promise.all([loadProposals(), loadMetrics()]);
         } catch (error) {
             if (!handleAuthError(error)) {
@@ -501,12 +586,13 @@ if (themeToggle) {
 
             const statusCell = document.createElement("td");
             const pill = document.createElement("span");
-            pill.className = `status-pill status-${proposal.status}`;
-            pill.textContent = proposal.status;
+            const status = describeProposalStatus(proposal);
+            pill.className = `status-pill status-${status.tone}`;
+            pill.textContent = status.label;
             statusCell.appendChild(pill);
 
             const actionCell = document.createElement("td");
-            if (proposal.status === "pending") {
+            if (proposal.status === "pending" && canApproveProposals) {
                 const actions = document.createElement("div");
                 actions.className = "live-table-actions";
 
@@ -526,6 +612,8 @@ if (themeToggle) {
 
                 actions.append(approveButton, rejectButton);
                 actionCell.appendChild(actions);
+            } else if (proposal.status === "pending") {
+                actionCell.textContent = "Authorised review required";
             } else {
                 actionCell.textContent = "—";
             }
@@ -574,6 +662,67 @@ if (themeToggle) {
                 }
             } finally {
                 button.disabled = false;
+            }
+        });
+    }
+
+    const customerSearch = document.getElementById("customer-search");
+    if (customerSearch) {
+        customerSearch.addEventListener("input", function () {
+            window.clearTimeout(customerSearchTimer);
+            customerSearchTimer = window.setTimeout(function () {
+                refreshPanel(loadCustomers);
+            }, 250);
+        });
+    }
+
+    const customerEditorDialog = document.getElementById("customer-editor-dialog");
+    const customerEditorForm = document.getElementById("customer-editor-form");
+    const closeCustomerEditor = function () {
+        if (customerEditorDialog) {
+            customerEditorDialog.close();
+        }
+    };
+    const customerEditorCancel = document.getElementById("customer-editor-cancel");
+    const customerEditorCancelSecondary = document.getElementById("customer-editor-cancel-secondary");
+    [customerEditorCancel, customerEditorCancelSecondary].forEach(function (button) {
+        if (button) {
+            button.addEventListener("click", closeCustomerEditor);
+        }
+    });
+
+    if (customerEditorForm) {
+        customerEditorForm.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const customerId = document.getElementById("customer-editor-id").value;
+            const submitButton = customerEditorForm.querySelector('button[type="submit"]');
+            const tags = document.getElementById("customer-editor-tags").value
+                .split(",")
+                .map(function (tag) { return tag.trim(); })
+                .filter(Boolean);
+
+            submitButton.disabled = true;
+            try {
+                await API.request(`/customers/${customerId}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({
+                        name: document.getElementById("customer-editor-name").value.trim(),
+                        company: document.getElementById("customer-editor-company").value.trim(),
+                        email: document.getElementById("customer-editor-email").value.trim() || null,
+                        phone: document.getElementById("customer-editor-phone").value.trim() || null,
+                        tags: tags,
+                        notes: document.getElementById("customer-editor-notes").value.trim()
+                    })
+                });
+                closeCustomerEditor();
+                showMessage("Customer updated.");
+                await Promise.all([loadCustomers(), loadMetrics()]);
+            } catch (error) {
+                if (!handleAuthError(error)) {
+                    showMessage(error.message || "Could not update customer.", "error");
+                }
+            } finally {
+                submitButton.disabled = false;
             }
         });
     }
