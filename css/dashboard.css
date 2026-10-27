@@ -587,6 +587,20 @@ select:focus-visible {
     border-color: var(--border-glow);
 }
 
+.date-button:disabled,
+.quick-action:disabled,
+.dashboard-search input:disabled,
+select:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+}
+
+.quick-action:disabled:hover {
+    background-color: var(--bg-card);
+    border-color: var(--border);
+    transform: none;
+}
+
 
 /* ==================== 8. SECTION HEADINGS ==================== */
 
@@ -3428,6 +3442,111 @@ select:focus-visible {
 .status-pill.status-approved {
     background: rgba(56, 189, 248, 0.12);
     color: var(--blue);
+}
+
+.status-pill.status-posting-failed {
+    background: rgba(251, 113, 133, 0.12);
+    color: var(--red);
+}
+
+.status-pill.status-applied {
+    background: rgba(34, 197, 94, 0.14);
+    color: var(--green-light);
+}
+
+.live-panel-tools {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0 0 14px;
+}
+
+.live-search {
+    display: grid;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.live-search input,
+.customer-editor-form input,
+.customer-editor-form textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font: inherit;
+    padding: 10px 12px;
+}
+
+.live-search input {
+    min-width: min(100%, 260px);
+}
+
+.customer-dialog {
+    width: min(560px, calc(100% - 32px));
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    padding: 0;
+}
+
+.customer-dialog::backdrop {
+    background: rgba(3, 7, 18, 0.7);
+}
+
+.customer-editor-form {
+    display: grid;
+    gap: 10px;
+    padding: 24px;
+}
+
+.customer-editor-form label {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.customer-dialog-header,
+.customer-dialog-actions {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.customer-dialog-header p {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+.dialog-close-button {
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 28px;
+    line-height: 1;
+}
+
+.customer-dialog-actions {
+    align-items: center;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+
+@media (max-width: 560px) {
+    .live-panel-tools {
+        justify-content: stretch;
+    }
+
+    .live-search,
+    .live-search input {
+        width: 100%;
+    }
 }
 
 .status-pill.status-reversed {
