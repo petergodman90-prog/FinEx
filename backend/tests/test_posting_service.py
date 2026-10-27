@@ -29,7 +29,7 @@ from sqlalchemy.exc import DBAPIError
 from app.core.db import SessionLocal
 from app.core.rls import bind_session_context
 from app.schemas.auth import RegisterRequest
-from app.services import auth_service, posting_service
+from app.services import auth_service, ledger_service, posting_service
 from app.services.posting_service import (
     PostingRetryableError,
     PostingValidationError,
@@ -228,6 +228,44 @@ async def _post_sale(org: dict, proposal_id: uuid.UUID, payload: dict):
                 payload=payload,
                 requested_by=org["user_id"],
                 role="owner",
+            )
+
+
+async def _create_supplier(org: dict, name: str = "Report Supplier") -> uuid.UUID:
+    async with SessionLocal() as session:
+        async with session.begin():
+            return await posting_service.create_supplier(
+                session, org["org_id"], name=name
+            )
+
+
+async def _post_expense(
+    org: dict,
+    *,
+    amount: str = "10.00",
+    category: str = "rent",
+    method: str = "cash",
+    supplier_id: uuid.UUID | None = None,
+    effective_at: str = "2026-01-20T12:00:00Z",
+):
+    payment = {"method": method}
+    if method == "payable":
+        payment["supplier_id"] = str(supplier_id)
+    async with SessionLocal() as session:
+        async with session.begin():
+            return await posting_service.post_proposal(
+                session,
+                org_id=org["org_id"],
+                proposal_id=uuid.uuid4(),
+                proposal_type="expense",
+                payload={
+                    "amount": amount,
+                    "currency": "NGN",
+                    "effective_at": effective_at,
+                    "category": category,
+                    "payment": payment,
+                },
+                requested_by=org["user_id"],
             )
 
 
@@ -704,3 +742,223 @@ async def test_reversal_restores_stock_and_is_idempotent(org_factory) -> None:
     assert replay.replayed is True
     assert replay.journal_entry_id == reversal.journal_entry_id
     assert await _counts(org) == after
+
+
+# ── Reports ──────────────────────────────────────────────────
+
+
+async def test_reports_profit_loss_balance_sheet_and_stock_valuation(
+    org_factory,
+) -> None:
+    org = await org_factory("Reports")
+    product_id = await _create_product(org)
+    customer_id = await _create_customer(org)
+    await _add_opening_stock(org, product_id, "10")
+
+    sale = await _post_sale(
+        org, uuid.uuid4(), _sale_payload(customer_id, product_id)
+    )
+    assert sale.receipt_id is not None
+    await _post_expense(org, amount="10.00", category="rent")
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            pnl = await ledger_service.profit_and_loss(
+                session,
+                org["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 1, 31),
+            )
+            balance = await ledger_service.balance_sheet(
+                session, org["org_id"], as_of=date(2026, 1, 31)
+            )
+            stock = await ledger_service.stock_valuation(session, org["org_id"])
+            trial = await ledger_service.trial_balance(session, org["org_id"])
+
+    assert pnl.revenue_total == Decimal("40")
+    assert pnl.cogs_total == Decimal("20")
+    assert pnl.gross_profit == Decimal("20")
+    assert pnl.operating_expense_total == Decimal("10")
+    assert pnl.net_profit == Decimal("10")
+    assert {line.account_code: line.amount for line in pnl.revenue_lines} == {
+        "4000": Decimal("40")
+    }
+    assert {line.account_code: line.amount for line in pnl.cogs_lines} == {
+        "5000": Decimal("20")
+    }
+    assert {
+        line.account_code: line.amount for line in pnl.operating_expense_lines
+    } == {"6100": Decimal("10")}
+
+    assert balance.total_assets == Decimal("110")
+    assert balance.total_liabilities == Decimal("0")
+    assert balance.total_equity == Decimal("100")
+    assert balance.current_earnings == Decimal("10")
+    assert balance.total_liabilities_and_equity == Decimal("110")
+    assert balance.is_balanced is True
+    assert {
+        line.account_code: line.amount for line in balance.asset_lines
+    } == {"1000": Decimal("30"), "1200": Decimal("80")}
+    assert {line.account_code: line.amount for line in balance.equity_lines} == {
+        "3000": Decimal("100")
+    }
+
+    assert len(stock.rows) == 1
+    row = stock.rows[0]
+    assert row.product_id == product_id
+    assert row.quantity_on_hand == Decimal("8")
+    assert row.book_value == Decimal("80")
+    assert row.average_unit_cost == Decimal("10")
+    assert stock.total_book_value == Decimal("80")
+    assert stock.inventory_account_balance == Decimal("80")
+    assert stock.is_reconciled is True
+
+    assert sum((line.debit_total for line in trial), Decimal("0")) == sum(
+        (line.credit_total for line in trial), Decimal("0")
+    )
+    assert sum((line.net_debit_balance for line in trial), Decimal("0")) == Decimal(
+        "0"
+    )
+
+
+async def test_reports_respect_period_and_reversal(org_factory) -> None:
+    org = await org_factory("ReportReversal")
+    product_id = await _create_product(org)
+    customer_id = await _create_customer(org)
+    await _add_opening_stock(org, product_id, "10")
+
+    sale = await _post_sale(
+        org, uuid.uuid4(), _sale_payload(customer_id, product_id)
+    )
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            reversal = await posting_service.reverse_posting(
+                session,
+                org_id=org["org_id"],
+                journal_entry_id=sale.journal_entry_id,
+                effective_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+                requested_by=org["user_id"],
+            )
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            january = await ledger_service.profit_and_loss(
+                session,
+                org["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 1, 31),
+            )
+            february = await ledger_service.profit_and_loss(
+                session,
+                org["org_id"],
+                start=date(2026, 2, 1),
+                end=date(2026, 2, 28),
+            )
+            combined = await ledger_service.profit_and_loss(
+                session,
+                org["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 2, 28),
+            )
+            balance = await ledger_service.balance_sheet(
+                session, org["org_id"], as_of=date(2026, 2, 1)
+            )
+            stock = await ledger_service.stock_valuation(session, org["org_id"])
+
+    assert reversal.journal_entry_id != sale.journal_entry_id
+    assert january.revenue_total == Decimal("40")
+    assert january.cogs_total == Decimal("20")
+    assert january.net_profit == Decimal("20")
+    assert february.revenue_total == Decimal("-40")
+    assert february.cogs_total == Decimal("-20")
+    assert february.net_profit == Decimal("-20")
+    assert combined.revenue_total == Decimal("0")
+    assert combined.cogs_total == Decimal("0")
+    assert combined.net_profit == Decimal("0")
+
+    assert balance.total_assets == Decimal("100")
+    assert balance.total_equity == Decimal("100")
+    assert balance.current_earnings == Decimal("0")
+    assert balance.is_balanced is True
+    assert stock.total_book_value == Decimal("100")
+    assert stock.is_reconciled is True
+    assert stock.rows[0].quantity_on_hand == Decimal("10")
+
+
+async def test_debt_aging_is_org_scoped(org_factory) -> None:
+    org_a = await org_factory("AgingA")
+    org_b = await org_factory("AgingB")
+
+    product_a = await _create_product(org_a, sku="AGING-A")
+    customer_a = await _create_customer(org_a)
+    await _add_opening_stock(org_a, product_a, "10")
+    await _post_sale(
+        org_a,
+        uuid.uuid4(),
+        _sale_payload(customer_a, product_a, method="receivable"),
+    )
+
+    supplier_a = await _create_supplier(org_a, name="Supplier A")
+    await _post_expense(
+        org_a,
+        amount="25.00",
+        method="payable",
+        supplier_id=supplier_a,
+    )
+
+    supplier_b = await _create_supplier(org_b, name="Supplier B")
+    await _post_expense(
+        org_b,
+        amount="60.00",
+        method="payable",
+        supplier_id=supplier_b,
+    )
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org_a)
+            receivable_a = await ledger_service.debt_aging(
+                session, org_a["org_id"], item_type="customer_receivable"
+            )
+            payable_a = await ledger_service.debt_aging(
+                session, org_a["org_id"], item_type="supplier_payable"
+            )
+            with pytest.raises(ValueError):
+                await ledger_service.debt_aging(
+                    session, org_a["org_id"], item_type="not_a_debt"
+                )
+
+        async with session.begin():
+            await _bind(session, org_b)
+            receivable_b = await ledger_service.debt_aging(
+                session, org_b["org_id"], item_type="customer_receivable"
+            )
+            payable_b = await ledger_service.debt_aging(
+                session, org_b["org_id"], item_type="supplier_payable"
+            )
+
+    assert receivable_a.total_outstanding == Decimal("40")
+    assert payable_a.total_outstanding == Decimal("25")
+    assert receivable_b.total_outstanding == Decimal("0")
+    assert payable_b.total_outstanding == Decimal("60")
+
+    current_a = {bucket.bucket: bucket for bucket in receivable_a.buckets}["0-30"]
+    assert current_a.item_count == 1
+    assert current_a.outstanding_amount == Decimal("40")
+    current_payable_a = {bucket.bucket: bucket for bucket in payable_a.buckets}[
+        "0-30"
+    ]
+    assert current_payable_a.item_count == 1
+    assert current_payable_a.outstanding_amount == Decimal("25")
+    current_payable_b = {bucket.bucket: bucket for bucket in payable_b.buckets}[
+        "0-30"
+    ]
+    assert current_payable_b.item_count == 1
+    assert current_payable_b.outstanding_amount == Decimal("60")
+    assert sum(
+        (bucket.outstanding_amount for bucket in payable_a.buckets), Decimal("0")
+    ) == payable_a.total_outstanding

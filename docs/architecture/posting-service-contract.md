@@ -303,6 +303,7 @@ references (customer, product, supplier) in that organisation first.
 ## Related contracts
 
 - [Ownership and boundaries](ownership-and-boundaries.md)
+- [Ledger reports](ledger-reports.md)
 - [ADR 0001: financial records are append-only](../adr/0001-financial-records-are-append-only.md)
 - `db/migrations/0001_person_a_financial_core.sql` — ledger schema and posting functions
 - `db/migrations/0002_person_a_posting_service.sql` — setup functions and sale lines

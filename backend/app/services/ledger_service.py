@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.errors import NotFoundError
 
 ZERO = Decimal("0")
+MONEY_QUANT = Decimal("0.0001")
 
 
 # ── Row shapes ───────────────────────────────────────────────
@@ -102,6 +103,77 @@ class TrialBalanceRow:
     debit_total: Decimal
     credit_total: Decimal
     net_debit_balance: Decimal
+
+
+@dataclass(frozen=True)
+class ReportLine:
+    account_id: uuid.UUID
+    account_code: str
+    account_name: str
+    account_type: str
+    debit_total: Decimal
+    credit_total: Decimal
+    amount: Decimal
+
+
+@dataclass(frozen=True)
+class ProfitAndLossReport:
+    period_start: date
+    period_end: date
+    revenue_total: Decimal
+    cogs_total: Decimal
+    gross_profit: Decimal
+    operating_expense_total: Decimal
+    net_profit: Decimal
+    revenue_lines: list[ReportLine]
+    cogs_lines: list[ReportLine]
+    operating_expense_lines: list[ReportLine]
+
+
+@dataclass(frozen=True)
+class BalanceSheetReport:
+    as_of: date
+    asset_lines: list[ReportLine]
+    liability_lines: list[ReportLine]
+    equity_lines: list[ReportLine]
+    total_assets: Decimal
+    total_liabilities: Decimal
+    total_equity: Decimal
+    current_earnings: Decimal
+    total_liabilities_and_equity: Decimal
+    is_balanced: bool
+
+
+@dataclass(frozen=True)
+class StockValuationRow:
+    product_id: uuid.UUID
+    sku: str
+    name: str
+    quantity_on_hand: Decimal
+    book_value: Decimal
+    average_unit_cost: Decimal
+
+
+@dataclass(frozen=True)
+class StockValuationReport:
+    rows: list[StockValuationRow]
+    total_book_value: Decimal
+    inventory_account_balance: Decimal
+    is_reconciled: bool
+
+
+@dataclass(frozen=True)
+class AgingBucket:
+    bucket: str
+    item_count: int
+    outstanding_amount: Decimal
+
+
+@dataclass(frozen=True)
+class DebtAgingReport:
+    item_type: str
+    total_outstanding: Decimal
+    buckets: list[AgingBucket]
 
 
 @dataclass(frozen=True)
@@ -605,6 +677,259 @@ async def trial_balance(
         )
         for r in rows
     ]
+
+
+# ── Reports ──────────────────────────────────────────────────
+
+
+async def _account_activity(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    start: date | None = None,
+    end: date | None = None,
+) -> list[ReportLine]:
+    where = ["jl.org_id = :org"]
+    params: dict = {"org": org_id}
+    if start is not None:
+        where.append("je.effective_at >= CAST(:start AS date)")
+        params["start"] = start
+    if end is not None:
+        where.append("je.effective_at < (CAST(:end AS date) + INTERVAL '1 day')")
+        params["end"] = end
+    clause = " AND ".join(where)
+
+    rows = (
+        await session.execute(
+            text(
+                f"""
+                SELECT a.id AS account_id, a.code AS account_code,
+                       a.name AS account_name, a.account_type,
+                       sum(jl.debit) AS debit_total,
+                       sum(jl.credit) AS credit_total
+                FROM ledger.journal_lines jl
+                JOIN ledger.journal_entries je
+                  ON je.id = jl.journal_entry_id AND je.org_id = jl.org_id
+                JOIN ledger.accounts a
+                  ON a.id = jl.account_id AND a.org_id = jl.org_id
+                WHERE {clause}
+                GROUP BY a.id, a.code, a.name, a.account_type
+                ORDER BY a.code
+                """
+            ),
+            params,
+        )
+    ).all()
+
+    lines: list[ReportLine] = []
+    for row in rows:
+        debit = Decimal(row.debit_total)
+        credit = Decimal(row.credit_total)
+        if row.account_type in {"revenue", "liability", "equity"}:
+            amount = credit - debit
+        else:
+            amount = debit - credit
+        lines.append(
+            ReportLine(
+                account_id=row.account_id,
+                account_code=row.account_code,
+                account_name=row.account_name,
+                account_type=row.account_type,
+                debit_total=debit,
+                credit_total=credit,
+                amount=amount,
+            )
+        )
+    return lines
+
+
+async def profit_and_loss(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    start: date,
+    end: date,
+) -> ProfitAndLossReport:
+    if end < start:
+        raise ValueError("report end date must not precede its start date")
+
+    lines = await _account_activity(session, org_id, start=start, end=end)
+    revenue_lines = [line for line in lines if line.account_type == "revenue"]
+    cogs_lines = [line for line in lines if line.account_type == "cogs"]
+    expense_lines = [line for line in lines if line.account_type == "expense"]
+
+    revenue_total = sum((line.amount for line in revenue_lines), ZERO)
+    cogs_total = sum((line.amount for line in cogs_lines), ZERO)
+    operating_expense_total = sum((line.amount for line in expense_lines), ZERO)
+    gross_profit = revenue_total - cogs_total
+    net_profit = gross_profit - operating_expense_total
+
+    return ProfitAndLossReport(
+        period_start=start,
+        period_end=end,
+        revenue_total=revenue_total,
+        cogs_total=cogs_total,
+        gross_profit=gross_profit,
+        operating_expense_total=operating_expense_total,
+        net_profit=net_profit,
+        revenue_lines=revenue_lines,
+        cogs_lines=cogs_lines,
+        operating_expense_lines=expense_lines,
+    )
+
+
+async def balance_sheet(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    as_of: date,
+) -> BalanceSheetReport:
+    lines = await _account_activity(session, org_id, end=as_of)
+    asset_lines = [line for line in lines if line.account_type == "asset"]
+    liability_lines = [line for line in lines if line.account_type == "liability"]
+    equity_lines = [line for line in lines if line.account_type == "equity"]
+
+    revenue_total = sum(
+        (line.amount for line in lines if line.account_type == "revenue"), ZERO
+    )
+    cogs_total = sum(
+        (line.amount for line in lines if line.account_type == "cogs"), ZERO
+    )
+    expense_total = sum(
+        (line.amount for line in lines if line.account_type == "expense"), ZERO
+    )
+    current_earnings = revenue_total - cogs_total - expense_total
+
+    total_assets = sum((line.amount for line in asset_lines), ZERO)
+    total_liabilities = sum((line.amount for line in liability_lines), ZERO)
+    total_equity = sum((line.amount for line in equity_lines), ZERO)
+    total_liabilities_and_equity = total_liabilities + total_equity + current_earnings
+
+    return BalanceSheetReport(
+        as_of=as_of,
+        asset_lines=asset_lines,
+        liability_lines=liability_lines,
+        equity_lines=equity_lines,
+        total_assets=total_assets,
+        total_liabilities=total_liabilities,
+        total_equity=total_equity,
+        current_earnings=current_earnings,
+        total_liabilities_and_equity=total_liabilities_and_equity,
+        is_balanced=total_assets == total_liabilities_and_equity,
+    )
+
+
+async def stock_valuation(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+) -> StockValuationReport:
+    rows = (
+        await session.execute(
+            text(
+                """
+                SELECT product_id, sku, name, quantity_on_hand, movement_cost_value
+                FROM ledger.v_inventory_on_hand
+                WHERE org_id = :org
+                ORDER BY sku
+                """
+            ),
+            {"org": org_id},
+        )
+    ).all()
+
+    valuation_rows: list[StockValuationRow] = []
+    for row in rows:
+        quantity = Decimal(row.quantity_on_hand)
+        book_value = Decimal(row.movement_cost_value or 0)
+        average_cost = (
+            (book_value / quantity).quantize(MONEY_QUANT) if quantity else ZERO
+        )
+        valuation_rows.append(
+            StockValuationRow(
+                product_id=row.product_id,
+                sku=row.sku,
+                name=row.name,
+                quantity_on_hand=quantity,
+                book_value=book_value,
+                average_unit_cost=average_cost,
+            )
+        )
+
+    total_book_value = sum(
+        (row.book_value for row in valuation_rows), ZERO
+    ).quantize(MONEY_QUANT)
+    inventory_balance = await session.scalar(
+        text(
+            """
+            SELECT coalesce(sum(jl.debit - jl.credit), 0)
+            FROM ledger.journal_lines jl
+            JOIN ledger.accounts a
+              ON a.id = jl.account_id AND a.org_id = jl.org_id
+            WHERE jl.org_id = :org AND a.code = '1200'
+            """
+        ),
+        {"org": org_id},
+    )
+    inventory_account_balance = Decimal(inventory_balance or 0).quantize(MONEY_QUANT)
+
+    return StockValuationReport(
+        rows=valuation_rows,
+        total_book_value=total_book_value,
+        inventory_account_balance=inventory_account_balance,
+        is_reconciled=total_book_value == inventory_account_balance,
+    )
+
+
+_AGING_BUCKETS = ("0-30", "31-60", "61-90", "90+")
+_DEBT_ITEM_TYPES = {"customer_receivable", "supplier_payable"}
+
+
+async def debt_aging(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    item_type: str,
+) -> DebtAgingReport:
+    if item_type not in _DEBT_ITEM_TYPES:
+        raise ValueError(
+            "item_type must be 'customer_receivable' or 'supplier_payable'"
+        )
+
+    rows = (
+        await session.execute(
+            text(
+                """
+                SELECT aging_bucket, count(*) AS item_count,
+                       coalesce(sum(outstanding_amount), 0) AS outstanding_amount
+                FROM ledger.v_open_item_balances
+                WHERE org_id = :org
+                  AND item_type = CAST(:kind AS ledger.open_item_type)
+                  AND outstanding_amount <> 0
+                GROUP BY aging_bucket
+                """
+            ),
+            {"org": org_id, "kind": item_type},
+        )
+    ).all()
+    by_bucket = {
+        row.aging_bucket: (int(row.item_count), Decimal(row.outstanding_amount))
+        for row in rows
+    }
+    buckets = [
+        AgingBucket(
+            bucket=bucket,
+            item_count=by_bucket.get(bucket, (0, ZERO))[0],
+            outstanding_amount=by_bucket.get(bucket, (0, ZERO))[1],
+        )
+        for bucket in _AGING_BUCKETS
+    ]
+    total_outstanding = sum((bucket.outstanding_amount for bucket in buckets), ZERO)
+
+    return DebtAgingReport(
+        item_type=item_type,
+        total_outstanding=total_outstanding,
+        buckets=buckets,
+    )
 
 
 # ── Open items ───────────────────────────────────────────────
