@@ -17,10 +17,19 @@
     const customerSearch = document.getElementById("customer-search");
     const customerSort = document.getElementById("customer-sort");
     const customerResultsCount = document.getElementById("customers-results-count");
+    const previousPageButton = document.getElementById("customers-previous-page");
+    const nextPageButton = document.getElementById("customers-next-page");
+    const pageStatus = document.getElementById("customers-page-status");
     const customerMessage = document.getElementById("customers-message");
     const refreshButton = document.getElementById("refresh-customers");
 
+    const CUSTOMER_PAGE_SIZE = 50;
+    const SEARCH_DEBOUNCE_MS = 300;
     let customers = [];
+    let customerTotal = 0;
+    let customerOffset = 0;
+    let customerRequestSequence = 0;
+    let searchDebounceTimer = null;
     let customerLoadState = "loading";
     let submitInProgress = false;
     let dialogMode = "create";

@@ -265,6 +265,30 @@
     scrollbar-width: thin;
 }
 
+.customers-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 14px;
+}
+
+.customers-pagination .customers-secondary-button {
+    min-height: 36px;
+    padding: 7px 12px;
+}
+
+.customers-pagination .customers-secondary-button:disabled {
+    cursor: not-allowed;
+}
+
+.customers-page-status {
+    min-width: 96px;
+    color: var(--text-muted);
+    font-size: 10px;
+    text-align: center;
+}
+
 .customers-table {
     width: 100%;
     min-width: 690px;

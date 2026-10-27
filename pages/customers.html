@@ -365,18 +365,18 @@
                     <div>
                         <p class="customers-kicker">CUSTOMER RECORDS</p>
                         <h2 id="customers-directory-title">Customer Directory</h2>
-                        <p>Search and sorting apply to the 50 customer records currently loaded from the API.</p>
+                        <p>Search covers matching customer records. Sorting applies to the current page; the API returns pages by most recently added.</p>
                     </div>
                     <button type="button" class="customers-secondary-button" id="refresh-customers">Refresh</button>
                 </div>
 
                 <div class="customers-toolbar">
                     <label class="customers-search" for="customer-search">
-                        <span>Search loaded customers</span>
+                        <span>Search customers</span>
                         <input type="search" id="customer-search" placeholder="Name, email, or phone" aria-controls="customers-body">
                     </label>
                     <label class="customers-sort" for="customer-sort">
-                        <span>Sort loaded customers</span>
+                        <span>Sort current page</span>
                         <select id="customer-sort" aria-controls="customers-body">
                             <option value="created-desc">Recently added</option>
                             <option value="created-asc">Oldest added</option>
@@ -405,6 +405,11 @@
                         </tbody>
                     </table>
                 </div>
+                <nav class="customers-pagination" aria-label="Customer directory pagination">
+                    <button type="button" class="customers-secondary-button" id="customers-previous-page" aria-label="Previous customer page" disabled>Previous</button>
+                    <span id="customers-page-status" class="customers-page-status" aria-live="polite">Page 1 of 1</span>
+                    <button type="button" class="customers-secondary-button" id="customers-next-page" aria-label="Next customer page" disabled>Next</button>
+                </nav>
             </section>
             <p id="customers-message" class="customers-message" role="status" aria-live="polite" hidden></p>
         </main>
