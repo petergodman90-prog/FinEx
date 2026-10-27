@@ -35,7 +35,12 @@ from app.core.encryption import canonical_email, canonical_phone, get_pii_engine
 from app.core.passwords import hash_password, verify_password
 from app.core.rbac import Role
 from app.core.rls import bind_session_context
-from app.core.sessions import is_token_revoked, is_user_revoked, revoke_token
+from app.core.sessions import (
+    consume_token,
+    is_user_revoked,
+    revoke_all_user_tokens,
+    revoke_token,
+)
 from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.user import User
@@ -188,10 +193,19 @@ async def add_membership(
     org_id: uuid.UUID,
     role: str = Role.STAFF.value,
     is_default: bool = False,
+    actor_role: str = Role.OWNER.value,
 ) -> Membership:
-    """Attach a user to an org with a role. Binds context first so the RLS
-    ``WITH CHECK`` on memberships passes in hardened (non-superuser) setups."""
-    await bind_session_context(session, org_id=org_id, user_id=user_id, role=role)
+    """Attach a user to an org with a role.
+
+    ``actor_role`` is the *acting* principal's role, not the role being
+    granted. It defaults to owner because the only current callers are
+    self-serve registration and test setup. Future staff-management paths must
+    pass the real actor role so the membership RLS write policy can reject
+    staff/admin escalation.
+    """
+    await bind_session_context(
+        session, org_id=org_id, user_id=user_id, role=actor_role
+    )
     membership = Membership(
         org_id=org_id, user_id=user_id, role=role, is_default=is_default
     )
@@ -277,7 +291,7 @@ async def refresh(session: AsyncSession, data: RefreshRequest) -> TokenResponse:
     payload = decode_refresh_token(data.refresh_token)
     if payload is None:
         raise AuthenticationError("Invalid or expired refresh token")
-    if await is_token_revoked(payload.jti) or await is_user_revoked(payload.sub):
+    if await is_user_revoked(payload.sub, payload.iat):
         raise AuthenticationError("Refresh token has been revoked")
 
     user = await session.get(User, uuid.UUID(payload.sub))
@@ -287,8 +301,12 @@ async def refresh(session: AsyncSession, data: RefreshRequest) -> TokenResponse:
     memberships = await _load_memberships(session, user.id)
     active = _select_membership(memberships, data.org_id)
 
-    # Rotation: burn the presented refresh token before issuing a new one.
-    await revoke_token(payload.jti, payload.exp)
+    # Rotation must be atomic. A second concurrent request using the same
+    # token loses the SET NX race and is treated as reuse: revoke the whole
+    # token family so a stolen refresh token cannot be replayed indefinitely.
+    if not await consume_token(payload.jti, payload.exp):
+        await revoke_all_user_tokens(payload.sub)
+        raise AuthenticationError("Refresh token has already been used")
 
     context.bind_request_context(user_id=user.id, org_id=active[0].org_id, role=active[0].role)
     response = _issue_tokens(user, memberships, active)

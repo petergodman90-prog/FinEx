@@ -13,12 +13,19 @@ from app.core.cookies import (
 )
 from app.core.db import get_db
 from app.core.dependencies import get_current_user
+from app.core.rate_limit import (
+    enforce_login_rate_limit,
+    enforce_refresh_rate_limit,
+    enforce_register_rate_limit,
+)
 from app.schemas.auth import (
     LoginRequest,
     LogoutRequest,
     MeResponse,
     RefreshRequest,
+    RefreshSessionRequest,
     RegisterRequest,
+    SessionResponse,
     SwitchOrgRequest,
     TokenResponse,
 )
@@ -28,45 +35,60 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post(
-    "/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED
+    "/register", response_model=SessionResponse, status_code=status.HTTP_201_CREATED
 )
 async def register(
     data: RegisterRequest,
+    request: Request,
     response: Response,
     session: AsyncSession = Depends(get_db),
-) -> TokenResponse:
+) -> SessionResponse:
     """Self-serve signup: creates user + organization + owner membership."""
+    await enforce_register_rate_limit(request)
     tokens = await auth_service.register(session, data)
     set_auth_cookies(response, tokens)
-    return tokens
+    return tokens.session()
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=SessionResponse)
 async def login(
     data: LoginRequest,
+    request: Request,
     response: Response,
     session: AsyncSession = Depends(get_db),
-) -> TokenResponse:
+) -> SessionResponse:
+    await enforce_login_rate_limit(request, str(data.email))
     tokens = await auth_service.login(session, data)
     set_auth_cookies(response, tokens)
-    return tokens
+    return tokens.session()
 
 
-@router.post("/refresh", response_model=TokenResponse)
+@router.post("/token", response_model=TokenResponse)
+async def token(
+    data: LoginRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """Non-browser login: returns bearer tokens instead of setting cookies."""
+    await enforce_login_rate_limit(request, str(data.email))
+    return await auth_service.login(session, data)
+
+
+@router.post("/refresh", response_model=SessionResponse)
 async def refresh(
     request: Request,
     response: Response,
-    data: RefreshRequest | None = None,
+    data: RefreshSessionRequest | None = None,
     session: AsyncSession = Depends(get_db),
-) -> TokenResponse:
-    """Rotates the refresh token (from JSON or the HttpOnly cookie)."""
-    refresh_token = data.refresh_token if data else None
-    refresh_token = refresh_token or request.cookies.get(REFRESH_COOKIE)
+) -> SessionResponse:
+    """Rotates the browser refresh token from the HttpOnly cookie."""
+    refresh_token = request.cookies.get(REFRESH_COOKIE)
     if not refresh_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token required",
         )
+    await enforce_refresh_rate_limit(request)
     tokens = await auth_service.refresh(
         session,
         RefreshRequest(
@@ -75,7 +97,18 @@ async def refresh(
         ),
     )
     set_auth_cookies(response, tokens)
-    return tokens
+    return tokens.session()
+
+
+@router.post("/token/refresh", response_model=TokenResponse)
+async def token_refresh(
+    data: RefreshRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """Non-browser refresh: the caller supplies its own bearer refresh token."""
+    await enforce_refresh_rate_limit(request)
+    return await auth_service.refresh(session, data)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -92,16 +125,26 @@ async def logout(
     clear_auth_cookies(response)
 
 
-@router.post("/switch-org", response_model=TokenResponse)
+@router.post("/switch-org", response_model=SessionResponse)
 async def switch_org(
     data: SwitchOrgRequest,
     response: Response,
     user: TokenPayload = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
-) -> TokenResponse:
+) -> SessionResponse:
     tokens = await auth_service.switch_org(session, user, data.org_id)
     set_auth_cookies(response, tokens)
-    return tokens
+    return tokens.session()
+
+
+@router.post("/token/switch-org", response_model=TokenResponse)
+async def token_switch_org(
+    data: SwitchOrgRequest,
+    user: TokenPayload = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """Non-browser org switch: returns a new bearer access token."""
+    return await auth_service.switch_org(session, user, data.org_id)
 
 
 @router.get("/me", response_model=MeResponse)

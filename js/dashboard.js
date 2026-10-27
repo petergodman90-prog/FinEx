@@ -202,65 +202,94 @@ navLinks.forEach((link) => {
 // FINEX MOVING GLASS SELECTOR - SUMMARY CARDS
 // =========================================
 
-const summaryGrid = document.querySelector(".summary-grid");
+const summaryGrids = document.querySelectorAll(".summary-grid");
 
-if (summaryGrid) {
-    const summaryCards = summaryGrid.querySelectorAll(".summary-card");
+if (summaryGrids.length > 0) {
+    const selectors = [];
+    const allSummaryCards = [];
 
-    if (summaryCards.length > 0) {
-        // Create the moving glass element (hidden until a card is clicked).
-        const glassSelector = document.createElement("div");
-        glassSelector.className = "summary-selector";
-        glassSelector.setAttribute("aria-hidden", "true");
-        glassSelector.style.opacity = "0";
+    function selectSummaryCard(card, grid, selector) {
+        // There is only one active summary card across all grids.
+        selectors.forEach((entry) => {
+            if (entry.selector !== selector) {
+                entry.selector.style.opacity = "0";
+            }
+        });
 
-        summaryGrid.prepend(glassSelector);
+        allSummaryCards.forEach((item) => {
+            item.classList.toggle("is-selected", item === card);
+        });
 
-        function moveGlassSelector(card) {
-            const gridRect = summaryGrid.getBoundingClientRect();
-            const cardRect = card.getBoundingClientRect();
+        const gridRect = grid.getBoundingClientRect();
+        const cardRect = card.getBoundingClientRect();
 
-            glassSelector.style.width = `${cardRect.width}px`;
-            glassSelector.style.height = `${cardRect.height}px`;
+        selector.style.width = `${cardRect.width}px`;
+        selector.style.height = `${cardRect.height}px`;
+        selector.style.transform =
+            `translate(${cardRect.left - gridRect.left}px, ` +
+            `${cardRect.top - gridRect.top}px)`;
+        selector.style.opacity = "1";
+    }
 
-            glassSelector.style.transform =
-                `translate(${cardRect.left - gridRect.left}px, ` +
-                `${cardRect.top - gridRect.top}px)`;
+    summaryGrids.forEach((grid) => {
+        const cards = grid.querySelectorAll(".summary-card");
 
-            glassSelector.style.opacity = "1";
-
-            summaryCards.forEach((item) => {
-                item.classList.toggle("is-selected", item === card);
-            });
+        if (cards.length === 0) {
+            return;
         }
 
-        // Make the cards keyboard accessible.
-        summaryCards.forEach((card) => {
+        // Each grid needs its own selector because the grids are positioned
+        // independently. Only the selector for the active grid is visible.
+        const selector = document.createElement("div");
+        selector.className = "summary-selector";
+        selector.setAttribute("aria-hidden", "true");
+        selector.style.opacity = "0";
+
+        grid.prepend(selector);
+
+        selectors.push({ grid, selector });
+        allSummaryCards.push(...cards);
+
+        // Make every summary card keyboard accessible.
+        cards.forEach((card) => {
             card.setAttribute("tabindex", "0");
             card.setAttribute("role", "button");
 
             card.addEventListener("click", () => {
-                moveGlassSelector(card);
+                selectSummaryCard(card, grid, selector);
             });
 
             card.addEventListener("keydown", (event) => {
                 if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    moveGlassSelector(card);
+                    selectSummaryCard(card, grid, selector);
                 }
             });
         });
+    });
 
-        // Keep the selector aligned when the layout changes.
-        window.addEventListener("resize", () => {
-            const selectedCard =
-                summaryGrid.querySelector(".summary-card.is-selected");
+    // Keep the selector aligned when the layout changes.
+    window.addEventListener("resize", () => {
+        const selectedCard = allSummaryCards.find((card) =>
+            card.classList.contains("is-selected")
+        );
 
-            if (selectedCard) {
-                moveGlassSelector(selectedCard);
-            }
-        });
-    }
+        if (!selectedCard) {
+            return;
+        }
+
+        const entry = selectors.find(({ grid }) =>
+            grid.contains(selectedCard)
+        );
+
+        if (entry) {
+            selectSummaryCard(
+                selectedCard,
+                entry.grid,
+                entry.selector
+            );
+        }
+    });
 }
 // =========================================
 // SOCIAL MEDIA DROPDOWN

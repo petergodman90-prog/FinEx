@@ -49,8 +49,21 @@ class PIIFilter(logging.Filter):
         return text
 
 
+def _add_once(logger_or_handler) -> None:
+    if not any(isinstance(f, PIIFilter) for f in logger_or_handler.filters):
+        logger_or_handler.addFilter(PIIFilter())
+
+
 def install_pii_filter() -> None:
-    """Install the PII filter on the root logger.  Call once at app startup."""
+    """Install the PII filter on the root logger, its handlers, and uvicorn.
+
+    A filter on the root *logger* only sees records logged directly to it;
+    records propagated from ``app.*`` or ``uvicorn.access`` bypass it. Handler
+    filters are the reliable catch-all, so install on both.
+    """
     root = logging.getLogger()
-    if not any(isinstance(f, PIIFilter) for f in root.filters):
-        root.addFilter(PIIFilter())
+    _add_once(root)
+    for handler in root.handlers:
+        _add_once(handler)
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "app"):
+        _add_once(logging.getLogger(name))

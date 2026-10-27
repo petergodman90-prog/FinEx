@@ -37,15 +37,18 @@ service; the UI displays backend-provided figures without recalculating them.
    pip install -r requirements.txt -r requirements-dev.txt
    alembic upgrade head
    uvicorn app.main:app --reload        # UI + API: http://127.0.0.1:8000/
-   pytest -q                            # 63 tests; Postgres required, Redis faked
+   pytest -q                            # 105 tests; Postgres required, Redis faked
    ```
 
 4. Open <http://127.0.0.1:8000/>. The backend serves `index.html` and only the
    public `assets/`, `css/`, `js/` and `pages/` directories from the same origin
    as `/api/v1`. Browser sessions use `HttpOnly`, `SameSite=Lax` cookies, so no
-   tokens are stored in JavaScript and no CORS setup is needed. Expired access
-   cookies are refreshed silently through the HttpOnly refresh cookie, and
-   concurrent requests share a single refresh.
+   tokens are returned to or stored by page JavaScript and no CORS setup is
+   needed. Expired access cookies are refreshed silently through the HttpOnly
+   refresh cookie, and concurrent requests share a single refresh. Non-browser
+   API clients opt in to bearer tokens through `/api/v1/auth/token` and
+   `/api/v1/auth/token/refresh`; the browser login/refresh endpoints never
+   expose tokens in JSON.
 
    Never serve the repository root with a generic static server: that would
    expose `.env`, `backend/` and `db/`. Set `SERVE_FRONTEND=false` only when a

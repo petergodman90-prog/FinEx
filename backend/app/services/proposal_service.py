@@ -183,7 +183,19 @@ async def _decide(
     approve: bool,
     note: str | None,
 ) -> Proposal:
-    proposal = await get_proposal(session, actor, proposal_id)
+    # Lock the row for the whole decision so two concurrent approvals cannot
+    # both observe "pending" and overwrite each other's decision/audit trail.
+    proposal = await session.scalar(
+        select(Proposal)
+        .where(
+            Proposal.id == proposal_id,
+            Proposal.org_id == actor.org_id,
+            Proposal.deleted_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if proposal is None:
+        raise NotFoundError("Proposal not found")
     if proposal.status != ProposalStatus.PENDING.value:
         raise ConflictError(
             f"Proposal is '{proposal.status}' and can no longer be decided"
@@ -192,18 +204,37 @@ async def _decide(
         raise ConflictError(
             "Proposal has expired and can no longer be decided"
         )
-    if approve and not check_spend_cap(actor.role, proposal.amount or Decimal("0")):
-        try:
-            cap = SPEND_CAPS[Role(actor.role)]
-        except (ValueError, KeyError):
-            cap = Decimal("0")
-        raise PermissionDeniedError(
-            "Amount exceeds your role's approval limit",
-            details={
-                "spend_cap": str(cap) if cap is not None else None,
-                "amount": str(proposal.amount) if proposal.amount is not None else None,
-            },
+
+    if approve:
+        # A missing amount must never be treated as zero: otherwise a capped
+        # approver could approve an arbitrarily large posting payload. Only an
+        # unlimited approver may decide an unquantified proposal.
+        approval_amount = (
+            proposal.amount
+            if proposal.amount is not None
+            else Decimal("Infinity")
         )
+        if not check_spend_cap(actor.role, approval_amount):
+            try:
+                cap = SPEND_CAPS[Role(actor.role)]
+            except (ValueError, KeyError):
+                cap = Decimal("0")
+            raise PermissionDeniedError(
+                (
+                    "Proposal amount is missing; only an unlimited approver can "
+                    "approve it"
+                    if proposal.amount is None
+                    else "Amount exceeds your role's approval limit"
+                ),
+                details={
+                    "spend_cap": str(cap) if cap is not None else None,
+                    "amount": (
+                        str(proposal.amount)
+                        if proposal.amount is not None
+                        else None
+                    ),
+                },
+            )
 
     proposal.status = (
         ProposalStatus.APPROVED.value if approve else ProposalStatus.REJECTED.value

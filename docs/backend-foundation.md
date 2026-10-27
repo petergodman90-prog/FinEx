@@ -1,6 +1,6 @@
 # Backend Foundation (Layers 1–6)
 
-Status: complete and tested (63 tests green). Deferred by design: AI assistant
+Status: complete and tested (105 tests green). Deferred by design: AI assistant
 NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
 
 ## Layers
@@ -17,8 +17,10 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
   production serves the UI and API from one origin. With `SERVE_FRONTEND=true`
   the backend serves only `index.html` and the public `assets/`, `css/`, `js/`
   and `pages/` directories — never the repository root. Browser sessions use
-  `HttpOnly`, `SameSite=Lax` cookies (`app/core/cookies.py`); the JSON API also
-  keeps bearer-token support for non-browser clients.
+  `HttpOnly`, `SameSite=Lax` cookies (`app/core/cookies.py`); browser login,
+  register, refresh and switch-org responses contain no tokens. Non-browser
+  clients explicitly opt into bearer tokens via `/api/v1/auth/token` and
+  `/api/v1/auth/token/refresh`.
 - `app/core/rls.py` — single source of truth for tenancy: GUC names,
   `bind_session_context(session, org_id=..., user_id=...)` (binds via
   `set_config(..., is_local => true)`), the policy SQL shared by the migration
@@ -30,11 +32,20 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
 
 ### 2. Auth & sessions
 - `app/services/auth_service.py` + `app/api/auth.py`:
-  `/api/v1/auth/register | login | refresh | switch-org | logout | me`.
-- JWT access tokens (`app/core/auth.py`); refresh rotation with jti tracking;
-  session kill-switch (user-level revocation) via Redis
-  (`app/core/sessions.py`; tests use fakeredis). Password hashing in
+  `/api/v1/auth/register | login | refresh | switch-org | logout | me` for
+  browsers, plus explicit `/api/v1/auth/token | token/refresh | token/switch-org`
+  endpoints for non-browser API clients.
+- JWT access tokens (`app/core/auth.py`); refresh rotation is atomic via
+  Redis `SET NX` with jti tracking. Reusing a consumed refresh token revokes
+  the whole token family. Session kill-switch (user-level revocation) via
+  Redis (`app/core/sessions.py`; tests use fakeredis). Password hashing in
   `app/core/passwords.py`.
+- Login/register/refresh are rate limited per client IP (and login additionally
+  per account) through Redis (`app/core/rate_limit.py`). The limiter fails
+  closed if Redis is unavailable.
+- Production startup rejects weak/placeholder JWT secrets, missing or invalid
+  PII keys, wildcard CORS, and unsafe JWT algorithms
+  (`app/core/config.py`).
 - Register creates the organization + owner membership; login supports org
   selection; switch-org re-issues tokens bound to another membership.
 
@@ -72,8 +83,11 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
   (`receipt_lines` via its receipt), sets `security_invoker=true` on the read
   views, rejects posting rows that do not match the transaction's org context,
   and grants `finex_app` SELECT + posting-function EXECUTE only.
+- `backend/migrations/versions/005_membership_rls_hardening.py`: splits the
+  memberships policy into read-own/read-org SELECT plus owner/admin-only
+  INSERT/UPDATE/DELETE, blocking staff self-promotion.
 - `alembic check` is clean (models ↔ migration zero drift).
-- `backend/tests` (63 tests): auth flows, refresh rotation/revocation,
+- `backend/tests` (105 tests): auth flows, refresh rotation/revocation,
   customers CRUD/dedup/merge/permissions, proposal idempotency/caps/expiry,
   dashboard metrics, RBAC matrix, crypto (encrypt/blind index), RLS
   enabled+forced and cross-tenant isolation — including behavioral checks that
@@ -95,11 +109,15 @@ pytest -q                         # Postgres required; Redis is faked (fakeredis
 ## Security invariants (enforced, not aspirational)
 - Every tenant table has RLS enabled + forced with the org policy; the app
   role cannot bypass it (NOBYPASSRLS, plus behavioral `SET ROLE` tests).
+  Membership writes are further restricted to the active org's owner/admin.
 - PII columns hold ciphertext; lookups go through the HMAC blind index.
 - No raw PII in logs (logging filter).
 - Soft delete only (`deleted_at`); queries and unique indexes honor it.
-- Sessions: refresh tokens rotate; logout/revocation kills sessions
-  server-side via Redis.
+- Sessions: refresh tokens rotate atomically; replay kills the token family;
+  logout/revocation kills sessions server-side via Redis. Browser responses
+  never expose bearer tokens.
+- Auth endpoints are Redis-rate-limited; production startup validates JWT and
+  PII key material.
 - Proposals: 24h expiry, idempotency hash, role allow-list, spend caps,
   immutable audit trail.
 - Ledger: every table RLS-enabled and forced; `receipt_lines` isolated through
@@ -141,4 +159,5 @@ clears the tide.
 - Configure automated encrypted backups with point-in-time recovery and test a
   restore before launch — see
   [runbooks/backup-and-restore.md](runbooks/backup-and-restore.md).
-- Rate limiting and audit retention policies per `docs/security-charter.md`.
+- Auth rate limiting is Redis-backed and fail-closed. Plan audit retention
+  policies per `docs/security-charter.md`.

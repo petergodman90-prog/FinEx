@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -137,6 +138,64 @@ async def test_proposal_spend_caps_and_permissions(
         f"/api/v1/proposals/{big_id}/approve", json={}, headers=owner_h
     )
     assert owner_ok.status_code == 200
+
+
+async def test_missing_amount_cannot_bypass_spend_cap(
+    client, register_user, make_member
+) -> None:
+    reg = await register_user()
+    manager = await make_member(reg["active_org_id"], "manager")
+
+    created = await client.post(
+        "/api/v1/proposals",
+        json={
+            "proposal_type": "expense",
+            "title": "Unquantified factory order",
+            "payload": {"amount": "999999999.00"},
+        },
+        headers=_h(reg["access_token"]),
+    )
+    assert created.status_code == 200, created.text
+    proposal_id = created.json()["proposal"]["id"]
+
+    blocked = await client.post(
+        f"/api/v1/proposals/{proposal_id}/approve",
+        json={},
+        headers=_h(manager["token"]),
+    )
+    assert blocked.status_code == 403
+    assert blocked.json()["details"]["amount"] is None
+
+    owner_ok = await client.post(
+        f"/api/v1/proposals/{proposal_id}/approve",
+        json={},
+        headers=_h(reg["access_token"]),
+    )
+    assert owner_ok.status_code == 200, owner_ok.text
+
+
+async def test_concurrent_approval_has_one_decision(client, register_user) -> None:
+    reg = await register_user()
+    created = await client.post(
+        "/api/v1/proposals",
+        json={"proposal_type": "expense", "title": "Race", "amount": "10.00"},
+        headers=_h(reg["access_token"]),
+    )
+    proposal_id = created.json()["proposal"]["id"]
+
+    responses = await asyncio.gather(
+        client.post(
+            f"/api/v1/proposals/{proposal_id}/approve",
+            json={},
+            headers=_h(reg["access_token"]),
+        ),
+        client.post(
+            f"/api/v1/proposals/{proposal_id}/approve",
+            json={},
+            headers=_h(reg["access_token"]),
+        ),
+    )
+    assert sorted(response.status_code for response in responses) == [200, 409]
 
 
 async def test_proposal_expiry_flow(client, register_user) -> None:

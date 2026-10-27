@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, insert, select, text
+from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 
 import app.models  # noqa: F401  — register all tables on Base.metadata
@@ -77,7 +77,12 @@ async def graph(tracker):
         )
         await bind_session_context(session, org_id=org_a, user_id=user_a, role="owner")
         actor = TokenPayload(
-            sub=str(user_a), org_id=org_a, role="owner", jti="test", exp=_future()
+            sub=str(user_a),
+            org_id=org_a,
+            role="owner",
+            jti="test",
+            iat=datetime.now(timezone.utc),
+            exp=_future(),
         )
         customer = await customer_service.create_customer(
             session, CustomerCreate(name="Probe Customer"), actor
@@ -195,6 +200,50 @@ async def test_tenant_isolation(table_name: str, graph: dict) -> None:
                 )
                 await session.flush()
             await session.rollback()
+        finally:
+            await session.rollback()
+            await session.execute(text("RESET ROLE"))
+
+
+async def test_membership_self_escalation_is_blocked(graph: dict) -> None:
+    """A viewer/staff cannot promote their own membership row."""
+    memberships = Base.metadata.tables["memberships"]
+    async with SessionLocal() as session:
+        await session.execute(text(f"SET ROLE {APP_DB_ROLE}"))
+        try:
+            await bind_session_context(
+                session,
+                org_id=graph["org_b"],
+                user_id=graph["user_b"],
+                role="viewer",
+            )
+            result = await session.execute(
+                update(memberships)
+                .where(
+                    memberships.c.org_id == graph["org_b"],
+                    memberships.c.user_id == graph["user_b"],
+                )
+                .values(role="owner")
+            )
+            assert result.rowcount == 0
+            await session.rollback()
+
+            # An owner acting in the org can still administer memberships.
+            await bind_session_context(
+                session,
+                org_id=graph["org_a"],
+                user_id=graph["user_a"],
+                role="owner",
+            )
+            result = await session.execute(
+                update(memberships)
+                .where(
+                    memberships.c.org_id == graph["org_a"],
+                    memberships.c.user_id == graph["user_a"],
+                )
+                .values(role="admin")
+            )
+            assert result.rowcount == 1
         finally:
             await session.rollback()
             await session.execute(text("RESET ROLE"))

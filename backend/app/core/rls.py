@@ -39,14 +39,21 @@ def default_policy_expression() -> str:
 
 
 # Per-table policy overrides. Default policy is strict org isolation.
+# Memberships need a SELECT exception so a user can see their own memberships
+# before an active org exists. Writes are deliberately not self-service: only
+# an owner/admin acting in the active org may add, change or remove a
+# membership. Otherwise a staff row could promote itself to owner.
+_MEMBERSHIP_ROLES = "'owner', 'admin'"
+_MEMBERSHIP_SELECT = (
+    f"org_id = current_setting('{GUC_ORG}', true)::uuid"
+    f" OR user_id = current_setting('{GUC_USER}', true)::uuid"
+)
+_MEMBERSHIP_WRITE = (
+    f"org_id = current_setting('{GUC_ORG}', true)::uuid"
+    f" AND current_setting('{GUC_ROLE}', true) IN ({_MEMBERSHIP_ROLES})"
+)
 _POLICY_OVERRIDES: dict[str, str] = {
-    # Memberships: a user must be able to read their own memberships while
-    # logging in — i.e. before an active org exists. Rows are visible when
-    # scoped to the active org OR owned by the current user.
-    "memberships": (
-        f"org_id = current_setting('{GUC_ORG}', true)::uuid"
-        f" OR user_id = current_setting('{GUC_USER}', true)::uuid"
-    ),
+    "memberships": _MEMBERSHIP_SELECT,
 }
 
 
@@ -58,6 +65,15 @@ def policy_name(table_name: str) -> str:
     return f"{table_name}_tenant_isolation"
 
 
+def membership_policy_names() -> list[str]:
+    return [
+        "memberships_select",
+        "memberships_insert",
+        "memberships_update",
+        "memberships_delete",
+    ]
+
+
 def tenant_table_names(metadata: MetaData) -> list[str]:
     """Names of tables that carry an ``org_id`` column → must be RLS-protected."""
     return [t.name for t in metadata.sorted_tables if "org_id" in t.columns]
@@ -65,6 +81,33 @@ def tenant_table_names(metadata: MetaData) -> list[str]:
 
 def rls_statements(table_name: str) -> list[str]:
     """Idempotent DDL statements that put a tenant table under RLS."""
+    if table_name == "memberships":
+        return [
+            "ALTER TABLE memberships ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE memberships FORCE ROW LEVEL SECURITY",
+            f"DROP POLICY IF EXISTS {policy_name('memberships')} ON memberships",
+            *(
+                f"DROP POLICY IF EXISTS {name} ON memberships"
+                for name in membership_policy_names()
+            ),
+            (
+                "CREATE POLICY memberships_select ON memberships FOR SELECT "
+                f"USING ({_MEMBERSHIP_SELECT})"
+            ),
+            (
+                "CREATE POLICY memberships_insert ON memberships FOR INSERT "
+                f"WITH CHECK ({_MEMBERSHIP_WRITE})"
+            ),
+            (
+                "CREATE POLICY memberships_update ON memberships FOR UPDATE "
+                f"USING ({_MEMBERSHIP_WRITE}) WITH CHECK ({_MEMBERSHIP_WRITE})"
+            ),
+            (
+                "CREATE POLICY memberships_delete ON memberships FOR DELETE "
+                f"USING ({_MEMBERSHIP_WRITE})"
+            ),
+        ]
+
     expr = policy_expression(table_name)
     return [
         f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY",
@@ -79,6 +122,17 @@ def rls_statements(table_name: str) -> list[str]:
 
 def disable_rls_statements(table_name: str) -> list[str]:
     """DDL to remove RLS protection (downgrade only)."""
+    if table_name == "memberships":
+        return [
+            *(
+                f"DROP POLICY IF EXISTS {name} ON memberships"
+                for name in membership_policy_names()
+            ),
+            f"DROP POLICY IF EXISTS {policy_name('memberships')} ON memberships",
+            "ALTER TABLE memberships NO FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE memberships DISABLE ROW LEVEL SECURITY",
+        ]
+
     return [
         f"DROP POLICY IF EXISTS {policy_name(table_name)} ON {table_name}",
         f"ALTER TABLE {table_name} NO FORCE ROW LEVEL SECURITY",

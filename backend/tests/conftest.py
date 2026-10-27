@@ -139,6 +139,7 @@ from sqlalchemy import delete
 from sqlalchemy.exc import OperationalError
 
 from app.core.auth import create_access_token
+from app.core.cookies import ACCESS_COOKIE, REFRESH_COOKIE
 from app.core.db import SessionLocal
 from app.core.rls import bind_session_context, enable_audit_purge
 from app.models.organization import Organization
@@ -229,6 +230,11 @@ async def register_user(client, tracker):
         )
         assert response.status_code == 201, response.text
         data = response.json()
+        # Browser auth responses intentionally contain no tokens; tests read
+        # the HttpOnly cookies just like the browser does.
+        data["access_token"] = client.cookies.get(ACCESS_COOKIE)
+        data["refresh_token"] = client.cookies.get(REFRESH_COOKIE)
+        assert data["access_token"] and data["refresh_token"]
         tracker.add(data["active_org_id"])
         return data
 

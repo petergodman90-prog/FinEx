@@ -47,6 +47,12 @@ class RefreshRequest(BaseModel):
     org_id: uuid.UUID | None = None  # active org for the new access token
 
 
+class RefreshSessionRequest(BaseModel):
+    """Browser refresh: the token itself comes only from the HttpOnly cookie."""
+
+    org_id: uuid.UUID | None = None
+
+
 class SwitchOrgRequest(BaseModel):
     org_id: uuid.UUID
 
@@ -72,9 +78,9 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str | None = None
+class SessionResponse(BaseModel):
+    """Browser-facing response: tokens live only in HttpOnly cookies."""
+
     token_type: str = "bearer"
     access_expires_at: datetime
     refresh_expires_at: datetime | None = None
@@ -82,6 +88,19 @@ class TokenResponse(BaseModel):
     role: str
     user: UserOut
     memberships: list[MembershipOut] = Field(default_factory=list)
+
+
+class TokenResponse(SessionResponse):
+    """Explicit token response for non-browser API clients."""
+
+    access_token: str
+    refresh_token: str | None = None
+
+    def session(self) -> SessionResponse:
+        """Return the token-free browser representation."""
+        return SessionResponse(
+            **self.model_dump(exclude={"access_token", "refresh_token"})
+        )
 
 
 class MeResponse(BaseModel):
