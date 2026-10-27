@@ -49,8 +49,21 @@ function hideLoginNotification() {
     loginMessage.replaceChildren();
 }
 
+const loginSubmitButton = loginForm.querySelector('button[type="submit"]');
+
+// If a valid session cookie already exists, go straight to the dashboard.
+if (window.FinexAPI) {
+    window.FinexAPI.request("/auth/me")
+        .then(function () {
+            window.location.replace("pages/dashboard.html");
+        })
+        .catch(function () {
+            // Not signed in yet; stay on the login page.
+        });
+}
+
 // Validate the login form.
-loginForm.addEventListener("submit", function (event) {
+loginForm.addEventListener("submit", async function (event) {
     event.preventDefault();
 
     const emailInput = document.getElementById("email");
@@ -106,12 +119,52 @@ loginForm.addEventListener("submit", function (event) {
         return;
     }
 
-    // 4. Frontend validation only; authentication comes later.
+    // 4. The API currently signs in with email; phone sign-in comes later.
+    if (!isEmail) {
+        showLoginNotification(
+            "warning",
+            "Email required",
+            "Please sign in with the email address used to create your account."
+        );
+
+        emailInput.focus();
+        return;
+    }
+
+    // 5. Authenticate. The session is stored in HttpOnly cookies, never in
+    //    localStorage, so page scripts cannot read the token.
+    if (!window.FinexAPI) {
+        showLoginNotification(
+            "error",
+            "Cannot reach the server",
+            "The API client failed to load. Refresh the page and try again."
+        );
+        return;
+    }
+
+    loginSubmitButton.disabled = true;
     showLoginNotification(
         "success",
-        "Input validated successfully!",
-        "Your details look good. Actual sign-in will be connected later."
+        "Signing in...",
+        "Checking your credentials with FinEx."
     );
+
+    try {
+        await window.FinexAPI.request("/auth/login", {
+            method: "POST",
+            body: JSON.stringify({ email: email, password: password })
+        });
+
+        window.location.assign("pages/dashboard.html");
+    } catch (error) {
+        loginSubmitButton.disabled = false;
+        showLoginNotification(
+            "error",
+            "Sign-in failed",
+            error.message || "Please check your email and password."
+        );
+        passwordInput.focus();
+    }
 });
 
 // Clear old messages when the user edits the form.

@@ -2,10 +2,23 @@
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Dependencies and generated output
 node_modules/
+.next/
 dist/
+build/
 coverage/
 
 # Logs and operating-system files
@@ -13,3 +26,16 @@ coverage/
 .DS_Store
 Thumbs.db
 
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# Data and database dumps (contain customer records — never commit)
+*.sqlite
+*.db
+/data/
+/backups/
+*.dump
+*.sql.gz
