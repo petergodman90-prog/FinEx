@@ -395,7 +395,13 @@
                         </p>
                     </div>
 
-                    <button type="button" class="date-button" id="date-button">
+                    <button
+                        type="button"
+                        class="date-button"
+                        id="date-button"
+                        disabled
+                        title="Date filtering will be available when financial reporting is connected."
+                    >
                         <span aria-hidden="true">▦</span>
                         <span id="current-date">Today</span>
                         <span aria-hidden="true">⌄</span>
@@ -420,8 +426,9 @@
                     <input
                         type="search"
                         id="dashboard-search"
-                        placeholder="Search anything..."
-                        aria-label="Search dashboard"
+                        placeholder="Search will be available soon"
+                        aria-label="Search dashboard (not available yet)"
+                        disabled
                     >
                 </label>
 
@@ -764,6 +771,19 @@
                     </button>
                 </div>
 
+                <div class="live-panel-tools">
+                    <label class="live-search" for="customer-search">
+                        Search customers
+                        <input
+                            id="customer-search"
+                            name="customer-search"
+                            type="search"
+                            placeholder="Name, email, or phone"
+                            autocomplete="off"
+                        >
+                    </label>
+                </div>
+
                 <form class="live-form" id="customer-form">
                     <input
                         id="customer-name"
@@ -809,6 +829,43 @@
                 </div>
 
             </section>
+
+            <dialog class="customer-dialog" id="customer-editor-dialog" aria-labelledby="customer-editor-title">
+                <form id="customer-editor-form" class="customer-editor-form">
+                    <div class="customer-dialog-header">
+                        <div>
+                            <h3 id="customer-editor-title">Edit customer</h3>
+                            <p>Update the customer record for this workspace.</p>
+                        </div>
+                        <button type="button" class="dialog-close-button" id="customer-editor-cancel" aria-label="Close customer editor">×</button>
+                    </div>
+
+                    <input id="customer-editor-id" type="hidden">
+
+                    <label for="customer-editor-name">Name</label>
+                    <input id="customer-editor-name" name="name" type="text" maxlength="200" required>
+
+                    <label for="customer-editor-company">Company</label>
+                    <input id="customer-editor-company" name="company" type="text" maxlength="200">
+
+                    <label for="customer-editor-email">Email</label>
+                    <input id="customer-editor-email" name="email" type="email" maxlength="254">
+
+                    <label for="customer-editor-phone">Phone</label>
+                    <input id="customer-editor-phone" name="phone" type="tel" maxlength="32">
+
+                    <label for="customer-editor-tags">Tags</label>
+                    <input id="customer-editor-tags" name="tags" type="text" maxlength="1020" placeholder="Separate tags with commas">
+
+                    <label for="customer-editor-notes">Notes</label>
+                    <textarea id="customer-editor-notes" name="notes" maxlength="10000" rows="4"></textarea>
+
+                    <div class="customer-dialog-actions">
+                        <button type="button" class="text-button" id="customer-editor-cancel-secondary">Cancel</button>
+                        <button type="submit" class="text-button">Save changes</button>
+                    </div>
+                </form>
+            </dialog>
 
 
             <!-- PROPOSALS (AI-SAFE STAGED WRITES) -->
@@ -875,34 +932,34 @@
 
                 <div class="section-heading">
                     <h3>Quick Actions</h3>
-                    <p>Get things done faster.</p>
+                    <p>Available when financial posting and product setup are connected.</p>
                 </div>
 
                 <div class="quick-actions-grid">
 
-                    <button type="button" class="quick-action" data-action="sale">
+                    <button type="button" class="quick-action" data-action="sale" disabled title="Sales posting is not connected yet.">
                         <span class="quick-action-icon">＋</span>
                         <span>
                             <strong>Record a Sale</strong>
-                            <small>Add a new sale</small>
+                            <small>Coming soon</small>
                         </span>
                         <span class="action-arrow">→</span>
                     </button>
 
-                    <button type="button" class="quick-action" data-action="expense">
+                    <button type="button" class="quick-action" data-action="expense" disabled title="Expense posting is not connected yet.">
                         <span class="quick-action-icon expense-action-icon">↘</span>
                         <span>
                             <strong>Add Expense</strong>
-                            <small>Track business spending</small>
+                            <small>Coming soon</small>
                         </span>
                         <span class="action-arrow">→</span>
                     </button>
 
-                    <button type="button" class="quick-action" data-action="product">
+                    <button type="button" class="quick-action" data-action="product" disabled title="Product setup is not connected yet.">
                         <span class="quick-action-icon product-action-icon">▤</span>
                         <span>
                             <strong>Add Product</strong>
-                            <small>Manage your stock</small>
+                            <small>Coming soon</small>
                         </span>
                         <span class="action-arrow">→</span>
                     </button>

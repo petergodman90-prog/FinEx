@@ -15,7 +15,6 @@ CREATE TYPE ledger.account_type AS ENUM (
 );
 
 CREATE TYPE ledger.entry_status AS ENUM ('posted', 'reversed');
-
 CREATE TYPE ledger.stock_movement_type AS ENUM (
     'opening_balance', 'purchase', 'sale', 'sale_reversal',
     'adjustment_in', 'adjustment_out', 'stock_take', 'return_in', 'return_out'
