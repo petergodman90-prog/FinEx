@@ -454,7 +454,10 @@ if (themeToggle) {
     }
 
     function handleAuthError(error) {
-        if (error && (error.status === 401 || error.status === 403)) {
+        // Only an expired/invalid session should leave the application. A 403
+        // is a role restriction and must be shown in place, not treated as a
+        // logout (which would loop the user through the sign-in screen).
+        if (error && error.status === 401) {
             window.location.replace("../index.html");
             return true;
         }
@@ -676,6 +679,17 @@ if (themeToggle) {
             event.preventDefault();
         }
         if (!logoutDialog) {
+            // Pages without the confirmation dialog still need to revoke the
+            // server session before returning to the sign-in screen.
+            if (logoutBusy) {
+                return;
+            }
+            logoutBusy = true;
+            API.request("/auth/logout", { method: "POST" })
+                .catch(function () {})
+                .finally(function () {
+                    window.location.assign("../index.html");
+                });
             return;
         }
         if (logoutError) {
@@ -701,7 +715,7 @@ if (themeToggle) {
         }
     }
 
-    document.querySelectorAll("#logout-link, [data-logout-trigger]").forEach(
+    document.querySelectorAll(".logout-link, [data-logout-trigger]").forEach(
         function (trigger) {
             trigger.addEventListener("click", openLogoutDialog);
         }
@@ -860,6 +874,15 @@ if (themeToggle) {
                 setText("settings-workspace", "Workspace details are unavailable.");
                 setText("settings-workspace-id", "Workspace ID is unavailable.");
             }
+        });
+    } else if (
+        document.body.classList.contains("staff-page")
+        || document.body.classList.contains("debts-debtors-page")
+    ) {
+        // These workspaces are frontend-only demonstrations, but they still
+        // require an authenticated session to reach the application shell.
+        API.request("/auth/me").catch(function (error) {
+            handleAuthError(error);
         });
     }
 })();

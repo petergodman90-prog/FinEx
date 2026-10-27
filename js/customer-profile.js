@@ -56,7 +56,9 @@
     }
 
     function handleAuthError(error) {
-        if (error && (error.status === 401 || error.status === 403)) {
+        // A 403 is a role restriction, not an expired session. Leave the
+        // profile visible and let the caller report the permission error.
+        if (error && error.status === 401) {
             if (!redirectingForAuth) {
                 redirectingForAuth = true;
                 window.location.replace("../index.html");
@@ -343,6 +345,11 @@
         historyCard.hidden = true;
         profileCard.hidden = true;
         editLink.hidden = true;
+        if (API) {
+            API.request("/auth/me").catch(function (error) {
+                handleAuthError(error);
+            });
+        }
         return;
     }
 

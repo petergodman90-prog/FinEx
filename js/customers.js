@@ -67,7 +67,9 @@
     }
 
     function handleAuthError(error) {
-        if (error && (error.status === 401 || error.status === 403)) {
+        // A 403 is an authorisation problem for this role, not an expired
+        // session. Keep the user on the page and show the API error instead.
+        if (error && error.status === 401) {
             if (!redirectingForAuth) {
                 redirectingForAuth = true;
                 window.location.replace("../index.html");
@@ -123,29 +125,45 @@
         customerBody.replaceChildren(row);
     }
 
+    function updatePagination() {
+        const pageCount = Math.max(1, Math.ceil(customerTotal / CUSTOMER_PAGE_SIZE));
+        const pageNumber = Math.min(
+            pageCount,
+            Math.floor(customerOffset / CUSTOMER_PAGE_SIZE) + 1
+        );
+
+        if (pageStatus) {
+            pageStatus.textContent = `Page ${pageNumber} of ${pageCount}`;
+        }
+        if (previousPageButton) {
+            previousPageButton.disabled =
+                customerLoadState === "loading" || customerOffset <= 0;
+        }
+        if (nextPageButton) {
+            nextPageButton.disabled = customerLoadState !== "loaded"
+                || customerOffset + customers.length >= customerTotal;
+        }
+    }
+
     function renderCustomers() {
         if (!customerBody) return;
 
         if (customerLoadState === "loading") {
             appendStateRow("Loading customers…");
             if (customerResultsCount) customerResultsCount.textContent = "Loading customer records…";
+            updatePagination();
             return;
         }
 
         if (customerLoadState === "error") {
             appendStateRow("Customer records could not be loaded. Use Refresh to try again.");
             if (customerResultsCount) customerResultsCount.textContent = "Customer list unavailable";
+            updatePagination();
             return;
         }
 
-        const query = customerSearch ? customerSearch.value.trim().toLocaleLowerCase() : "";
-        const visibleCustomers = customers.filter(function (customer) {
-            const searchableText = [customer.name, customer.email, customer.phone]
-                .filter(Boolean)
-                .join(" ")
-                .toLocaleLowerCase();
-            return searchableText.includes(query);
-        });
+        const query = customerSearch ? customerSearch.value.trim() : "";
+        const visibleCustomers = customers.slice();
 
         const sortMode = customerSort ? customerSort.value : "created-desc";
         visibleCustomers.sort(function (left, right) {
@@ -165,14 +183,22 @@
         });
 
         if (customerResultsCount) {
-            customerResultsCount.textContent = `Showing ${visibleCustomers.length} of ${customers.length} loaded records`;
+            if (query) {
+                customerResultsCount.textContent = `${customerTotal} matching customer${customerTotal === 1 ? "" : "s"}`;
+            } else if (customerTotal === 0) {
+                customerResultsCount.textContent = "No customers yet";
+            } else {
+                customerResultsCount.textContent =
+                    `Showing ${customerOffset + 1}–${customerOffset + visibleCustomers.length} of ${customerTotal} customers`;
+            }
         }
 
         if (!visibleCustomers.length) {
-            const emptyMessage = customers.length === 0
-                ? "No customers yet. Choose Add Customer to create the first record."
-                : `No loaded customers match “${customerSearch.value.trim()}”.`;
+            const emptyMessage = query
+                ? `No customers match “${query}”.`
+                : "No customers yet. Choose Add Customer to create the first record.";
             appendStateRow(emptyMessage);
+            updatePagination();
             return;
         }
 
@@ -222,22 +248,46 @@
             row.append(nameCell, emailCell, phoneCell, createdCell, actionCell);
             customerBody.appendChild(row);
         });
+
+        updatePagination();
     }
 
     async function loadCustomers() {
+        const requestId = ++customerRequestSequence;
         customerLoadState = "loading";
         renderCustomers();
 
         try {
-            const page = await API.request("/customers?limit=50");
+            const params = new URLSearchParams({
+                limit: String(CUSTOMER_PAGE_SIZE),
+                offset: String(customerOffset)
+            });
+            const query = customerSearch ? customerSearch.value.trim() : "";
+            if (query) {
+                params.set("q", query);
+            }
+
+            const page = await API.request(`/customers?${params.toString()}`);
+            if (requestId !== customerRequestSequence) {
+                return false;
+            }
             if (!page || !Array.isArray(page.items)) {
                 throw new Error("The customer list response was not in the expected format.");
             }
             customers = page.items;
+            customerTotal = Number.isFinite(Number(page.total))
+                ? Number(page.total)
+                : customers.length;
+            customerOffset = Number.isFinite(Number(page.offset))
+                ? Number(page.offset)
+                : customerOffset;
             customerLoadState = "loaded";
             renderCustomers();
             return true;
         } catch (error) {
+            if (requestId !== customerRequestSequence) {
+                return false;
+            }
             customerLoadState = "error";
             renderCustomers();
             throw error;
@@ -298,6 +348,10 @@
             customers = customers.filter(function (item) {
                 return item.id !== customer.id;
             });
+            customerTotal = Math.max(0, customerTotal - 1);
+            if (customers.length === 0 && customerOffset >= CUSTOMER_PAGE_SIZE) {
+                customerOffset -= CUSTOMER_PAGE_SIZE;
+            }
             customerLoadState = "loaded";
             renderCustomers();
 
@@ -542,6 +596,8 @@
                     customers = customers.map(function (item) {
                         return item.id === savedCustomer.id ? savedCustomer : item;
                     });
+                } else {
+                    customerOffset = 0;
                 }
                 const results = dialogMode === "edit"
                     ? await Promise.allSettled([loadCustomers()])
@@ -619,6 +675,23 @@
         }, { passive: true });
     }
 
+    function reloadCustomers() {
+        loadCustomers().catch(function (error) {
+            if (!handleAuthError(error)) {
+                showMessage(error.message || "Could not load the customer directory.", true);
+            }
+        });
+    }
+
+    function changeCustomerPage(direction) {
+        const nextOffset = customerOffset + direction * CUSTOMER_PAGE_SIZE;
+        if (nextOffset < 0 || nextOffset >= customerTotal) {
+            return;
+        }
+        customerOffset = nextOffset;
+        reloadCustomers();
+    }
+
     document.getElementById("customer-add-open")?.addEventListener("click", openCustomerDialog);
     document.getElementById("customer-dialog-close")?.addEventListener("click", closeCustomerDialog);
     document.getElementById("customer-dialog-cancel")?.addEventListener("click", closeCustomerDialog);
@@ -628,8 +701,21 @@
     customerDialog?.addEventListener("cancel", function (event) {
         if (submitInProgress) event.preventDefault();
     });
-    customerSearch?.addEventListener("input", renderCustomers);
+    customerSearch?.addEventListener("input", function () {
+        window.clearTimeout(searchDebounceTimer);
+        customerOffset = 0;
+        searchDebounceTimer = window.setTimeout(
+            reloadCustomers,
+            SEARCH_DEBOUNCE_MS
+        );
+    });
     customerSort?.addEventListener("change", renderCustomers);
+    previousPageButton?.addEventListener("click", function () {
+        changeCustomerPage(-1);
+    });
+    nextPageButton?.addEventListener("click", function () {
+        changeCustomerPage(1);
+    });
     refreshButton?.addEventListener("click", function () {
         refreshCustomerData(true);
     });

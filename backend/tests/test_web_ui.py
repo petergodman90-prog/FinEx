@@ -19,14 +19,18 @@ async def test_public_ui_is_served(client) -> None:
     assert index.status_code == 200
     assert "text/html" in index.headers["content-type"]
     assert "FinEx" in index.text
+    assert index.headers["cache-control"] == "no-store"
 
     alias = await client.get("/index.html")
     assert alias.status_code == 200
     assert "text/html" in alias.headers["content-type"]
+    assert alias.headers["cache-control"] == "no-store"
 
     for path in ("/css/style.css", "/css/dashboard.css", "/js/api.js", "/pages/register.html", "/pages/dashboard.html"):
         response = await client.get(path)
         assert response.status_code == 200, path
+        expected_cache = "no-cache" if path.endswith((".css", ".js")) else "no-store"
+        assert response.headers["cache-control"] == expected_cache, path
 
 
 @pytest.mark.parametrize(

@@ -52,8 +52,15 @@ def create_app() -> FastAPI:
         response.headers.setdefault(
             "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
         )
-        if request.url.path.startswith("/api/"):
+        response_path = request.url.path
+        if response_path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
+        elif response_path == "/" or response_path.endswith(".html"):
+            # The UI is not content-hashed. Revalidate the shell on every visit
+            # so a deploy cannot leave an old dashboard open in a browser tab.
+            response.headers.setdefault("Cache-Control", "no-store")
+        elif response_path.endswith((".js", ".css")):
+            response.headers.setdefault("Cache-Control", "no-cache")
         return response
 
     # Cross-origin access is opt-in and never a wildcard: production serves the

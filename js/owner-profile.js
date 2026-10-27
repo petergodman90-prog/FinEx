@@ -30,7 +30,7 @@
         display("owner-profile-member-since", formatDate(membership ? membership.joined_at : user.created_at), "—");
         message.textContent = "Profile details are loaded from the authenticated session.";
     }).catch(function (error) {
-        if (error.status === 401 || error.status === 403) {
+        if (error.status === 401) {
             window.location.replace("../index.html");
             return;
         }
