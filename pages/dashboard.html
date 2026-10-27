@@ -24,7 +24,7 @@
     <link rel="stylesheet" href="../css/dashboard.css">
 </head>
 
-<body>
+<body class="dashboard-page">
 
     <div class="dashboard-layout">
 
@@ -160,7 +160,7 @@
 
                 </div>
 
-                <a href="#customers" class="nav-link">
+                <a href="customers.html" class="nav-link">
                     <span class="nav-icon nav-icon--blue">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
@@ -170,6 +170,17 @@
                         </svg>
                     </span>
                     <span class="nav-label">Customers</span>
+                </a>
+
+                <a href="debts-debtors.html" class="nav-link">
+                    <span class="nav-icon nav-icon--emerald">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M6 3h12a2 2 0 0 1 2 2v16H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/>
+                            <path d="M3 18a3 3 0 0 1 3-3h14M8 8h3M8 11h3"/>
+                            <path d="M16 8v5m-2.5-2.5H18.5"/>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Debts &amp; Debtors</span>
                 </a>
 
                 <a href="#ledger" class="nav-link">
@@ -198,7 +209,7 @@
                     <span class="nav-label">Multi-Businesses</span>
                 </a>
 
-                <a href="#staff" class="nav-link">
+                <a href="staff.html" class="nav-link">
                     <span class="nav-icon nav-icon--amber">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
@@ -290,7 +301,7 @@
 
             <div class="sidebar-bottom">
 
-                <a href="#settings" class="nav-link">
+                <a href="settings.html" class="nav-link">
                     <span class="nav-icon nav-icon--slate">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <circle cx="12" cy="12" r="3"/>
@@ -311,11 +322,7 @@
                     <span class="nav-label">Customer Care</span>
                 </a>
 
-<<<<<<< HEAD
-                <a href="../index.html" class="nav-link logout-link">
-=======
                 <a href="../index.html" class="nav-link logout-link" id="logout-link">
->>>>>>> origin/main
                     <span class="nav-icon nav-icon--red">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -343,11 +350,7 @@
             <header class="topbar">
 
                 <div class="page-heading">
-<<<<<<< HEAD
-                    <p class="breadcrumb">Workspace /</p>
-=======
                     <p class="breadcrumb" id="workspace-name">Workspace</p>
->>>>>>> origin/main
                     <h1>Dashboard</h1>
                 </div>
 
@@ -359,23 +362,6 @@
                         id="notification-button"
                         aria-label="Notifications"
                     >
-<<<<<<< HEAD
-                        
-                        <span class="notification-dot"></span>
-                    </button>
-
-                    <div class="profile">
-
-                        <div class="profile-avatar">G</div>
-
-                        <div class="profile-details">
-                            <strong id="profile-name">Business Owner/<span>Administrator</span></strong> 
-                            
-                        </div>
-
-                        <span class="profile-arrow">⌄</span>
-
-=======
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/>
                             <path d="M13.7 21a2 2 0 0 1-3.4 0"/>
@@ -383,24 +369,31 @@
                         <span class="notification-dot"></span>
                     </button>
 
-                    <div
-                        class="profile"
-                        id="profile-summary"
-                        role="button"
-                        tabindex="0"
-                        aria-label="Open account settings"
-                    >
-                        <div class="profile-avatar" id="profile-avatar">G</div>
-
-                        <div class="profile-details">
-                            <strong id="profile-name">Business Owner</strong>
-                            <span id="profile-role">Owner</span>
+                    <div class="administrator-menu-wrap">
+                        <button
+                            type="button"
+                            class="profile administrator-menu-trigger"
+                            id="profile-summary"
+                            aria-expanded="false"
+                            aria-controls="administrator-menu"
+                        >
+                            <span class="profile-avatar" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="8" r="3.5"/>
+                                    <path d="M4 21v-1.5a8 8 0 0 1 16 0V21Z"/>
+                                </svg>
+                            </span>
+                            <span class="profile-details"><strong>Administrator</strong></span>
+                            <svg class="profile-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="m4 6 4 4 4-4"/>
+                            </svg>
+                        </button>
+                        <div class="administrator-menu" id="administrator-menu" hidden>
+                            <a href="owner-profile.html" class="administrator-menu-link">Business Owner Profile</a>
+                            <a href="settings.html#general" class="administrator-menu-link">Account Settings</a>
+                            <a href="settings.html#security" class="administrator-menu-link">Security</a>
+                            <button type="button" class="administrator-menu-link administrator-menu-signout" data-logout-trigger>Sign Out</button>
                         </div>
-
-                        <svg class="profile-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="m4 6 4 4 4-4"/>
-                        </svg>
->>>>>>> origin/main
                     </div>
 
                 </div>
@@ -533,8 +526,6 @@
             </section>
 
 
-<<<<<<< HEAD
-=======
             <!-- LIVE WORKSPACE METRICS (API) -->
             <section
                 class="summary-grid live-metrics"
@@ -591,7 +582,6 @@
             </section>
 
 
->>>>>>> origin/main
             <!-- CHART AND SIDE PANEL -->
             <section class="analytics-grid" id="sales">
 
@@ -650,17 +640,10 @@
 
                         <div>
                             <h3>Sales Overview</h3>
-<<<<<<< HEAD
-                            <p>Track your business revenue over time.</p>
-                        </div>
-
-                        <select id="sales-period" aria-label="Sales chart period">
-=======
                             <p>Live revenue appears after ledger postings are connected.</p>
                         </div>
 
                         <select id="sales-period" aria-label="Sales chart period" disabled>
->>>>>>> origin/main
                             <option value="week">This week</option>
                             <option value="month">This month</option>
                             <option value="year">This year</option>
@@ -711,25 +694,6 @@
                                 <line x1="0" y1="205" x2="700" y2="205"/>
                             </g>
 
-<<<<<<< HEAD
-                            <path
-                                class="chart-area"
-                                d="M0,175 L100,145 L200,160 L300,100
-                                   L400,125 L500,65 L600,85 L700,30
-                                   L700,205 L0,205 Z"
-                            />
-
-                            <path
-                                class="chart-line"
-                                d="M0,175 L100,145 L200,160 L300,100
-                                   L400,125 L500,65 L600,85 L700,30"
-                            />
-
-                            <circle cx="700" cy="30" r="5" class="chart-point"/>
-
-                        </svg>
-
-=======
                         </svg>
 
                         <div class="chart-empty-state">
@@ -737,7 +701,6 @@
                             <span>Figures come from the ledger posting service.<br>They are never recalculated in the browser.</span>
                         </div>
 
->>>>>>> origin/main
                     </div>
 
                     <div class="chart-labels" id="chart-labels">
@@ -814,118 +777,6 @@
             </section>
 
 
-<<<<<<< HEAD
-=======
-            <!-- CUSTOMERS (LIVE CRM) -->
-            <section class="panel live-panel" id="customers">
-
-                <div class="panel-header transactions-header">
-                    <div>
-                        <h3>Customers</h3>
-                        <p>Create and review live CRM records.</p>
-                    </div>
-                    <button type="button" class="text-button" id="refresh-customers">
-                        Refresh
-                    </button>
-                </div>
-
-                <div class="live-panel-tools">
-                    <label class="live-search" for="customer-search">
-                        Search customers
-                        <input
-                            id="customer-search"
-                            name="customer-search"
-                            type="search"
-                            placeholder="Name, email, or phone"
-                            autocomplete="off"
-                        >
-                    </label>
-                </div>
-
-                <form class="live-form" id="customer-form">
-                    <input
-                        id="customer-name"
-                        name="name"
-                        type="text"
-                        placeholder="Customer name"
-                        maxlength="200"
-                        required
-                    >
-                    <input
-                        id="customer-email"
-                        name="email"
-                        type="email"
-                        placeholder="Email (optional)"
-                        maxlength="254"
-                    >
-                    <input
-                        id="customer-phone"
-                        name="phone"
-                        type="tel"
-                        placeholder="Phone (optional)"
-                        maxlength="32"
-                    >
-                    <button type="submit" class="text-button">Add customer</button>
-                </form>
-
-                <div class="table-wrapper">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Customer</th>
-                                <th>Contact</th>
-                                <th>Created</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="customers-body">
-                            <tr class="empty-transactions">
-                                <td colspan="4">Loading customers…</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-            </section>
-
-            <dialog class="customer-dialog" id="customer-editor-dialog" aria-labelledby="customer-editor-title">
-                <form id="customer-editor-form" class="customer-editor-form">
-                    <div class="customer-dialog-header">
-                        <div>
-                            <h3 id="customer-editor-title">Edit customer</h3>
-                            <p>Update the customer record for this workspace.</p>
-                        </div>
-                        <button type="button" class="dialog-close-button" id="customer-editor-cancel" aria-label="Close customer editor">×</button>
-                    </div>
-
-                    <input id="customer-editor-id" type="hidden">
-
-                    <label for="customer-editor-name">Name</label>
-                    <input id="customer-editor-name" name="name" type="text" maxlength="200" required>
-
-                    <label for="customer-editor-company">Company</label>
-                    <input id="customer-editor-company" name="company" type="text" maxlength="200">
-
-                    <label for="customer-editor-email">Email</label>
-                    <input id="customer-editor-email" name="email" type="email" maxlength="254">
-
-                    <label for="customer-editor-phone">Phone</label>
-                    <input id="customer-editor-phone" name="phone" type="tel" maxlength="32">
-
-                    <label for="customer-editor-tags">Tags</label>
-                    <input id="customer-editor-tags" name="tags" type="text" maxlength="1020" placeholder="Separate tags with commas">
-
-                    <label for="customer-editor-notes">Notes</label>
-                    <textarea id="customer-editor-notes" name="notes" maxlength="10000" rows="4"></textarea>
-
-                    <div class="customer-dialog-actions">
-                        <button type="button" class="text-button" id="customer-editor-cancel-secondary">Cancel</button>
-                        <button type="submit" class="text-button">Save changes</button>
-                    </div>
-                </form>
-            </dialog>
-
-
             <!-- PROPOSALS (AI-SAFE STAGED WRITES) -->
             <section class="panel live-panel" id="proposals">
 
@@ -985,7 +836,6 @@
             </section>
 
 
->>>>>>> origin/main
             <!-- QUICK ACTIONS -->
             <section class="quick-actions-section">
 
@@ -1028,222 +878,6 @@
             </section>
 
 
-            <!-- SETTINGS -->
-            <section class="panel settings-panel" id="settings">
-
-                <div class="panel-header">
-                    <div>
-<<<<<<< HEAD
-                        <h3>Settings</h3>
-                        <p>Personalise your FinEx workspace.</p>
-                    </div>
-                </div>
-
-                <div class="settings-list">
-
-                    <div class="setting-row">
-
-                        <div class="setting-info">
-                            <span class="setting-icon" aria-hidden="true">☀</span>
-
-                            <div>
-                                <strong>Light mode</strong>
-                                <p>Switch the dashboard to a bright, high-contrast theme.</p>
-                            </div>
-                        </div>
-
-                        <label class="toggle-switch">
-                            <input
-                                type="checkbox"
-                                id="light-mode-toggle"
-                                role="switch"
-                                aria-label="Light mode"
-                            >
-                            <span class="toggle-track" aria-hidden="true">
-                                <span class="toggle-thumb"></span>
-                            </span>
-                        </label>
-
-                    </div>
-=======
-                        <h3>Settings &amp; account</h3>
-                        <p>Manage your profile, workspace, appearance and session.</p>
-                    </div>
-                </div>
-
-                <div class="settings-groups">
-
-                    <section class="settings-group" aria-labelledby="settings-account-title">
-                        <div class="settings-group-header">
-                            <h4 id="settings-account-title">Account</h4>
-                            <p>Your identity and active workspace.</p>
-                        </div>
-
-                        <div class="settings-list">
-                            <div class="setting-row">
-                                <div class="setting-info">
-                                    <span class="setting-icon" aria-hidden="true">&#9678;</span>
-                                    <div>
-                                        <strong>Signed in as</strong>
-                                        <p id="settings-identity">Loading account...</p>
-                                    </div>
-                                </div>
-                                <span class="settings-badge" id="settings-role">Owner</span>
-                            </div>
-
-                            <div class="setting-row">
-                                <div class="setting-info">
-                                    <span class="setting-icon" aria-hidden="true">&#8962;</span>
-                                    <div>
-                                        <strong>Workspace</strong>
-                                        <p id="settings-workspace">Loading workspace...</p>
-                                        <p class="settings-id" id="settings-workspace-id"></p>
-                                    </div>
-                                </div>
-                                <button type="button" class="setting-button" id="copy-workspace-id">
-                                    Copy ID
-                                </button>
-                            </div>
-
-                            <div class="setting-row">
-                                <div class="setting-info">
-                                    <span class="setting-icon" aria-hidden="true">&#9200;</span>
-                                    <div>
-                                        <strong>Member since</strong>
-                                        <p id="settings-member-since">—</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="settings-group" aria-labelledby="settings-appearance-title">
-                        <div class="settings-group-header">
-                            <h4 id="settings-appearance-title">Appearance</h4>
-                            <p>Make the workspace comfortable for you.</p>
-                        </div>
-
-                        <div class="settings-list">
-                            <div class="setting-row">
-                                <div class="setting-info">
-                                    <span class="setting-icon" aria-hidden="true">&#9728;</span>
-                                    <div>
-                                        <strong>Light mode</strong>
-                                        <p>Switch the dashboard to a bright, high-contrast theme.</p>
-                                    </div>
-                                </div>
-
-                                <label class="toggle-switch">
-                                    <input
-                                        type="checkbox"
-                                        id="light-mode-toggle"
-                                        role="switch"
-                                        aria-label="Light mode"
-                                    >
-                                    <span class="toggle-track" aria-hidden="true">
-                                        <span class="toggle-thumb"></span>
-                                    </span>
-                                </label>
-                            </div>
-
-                            <div class="setting-row">
-                                <div class="setting-info">
-                                    <span class="setting-icon" aria-hidden="true">&#9707;</span>
-                                    <div>
-                                        <strong>Compact sidebar</strong>
-                                        <p>Keep more space for your data by collapsing the navigation.</p>
-                                    </div>
-                                </div>
-
-                                <label class="toggle-switch">
-                                    <input
-                                        type="checkbox"
-                                        id="compact-sidebar-toggle"
-                                        role="switch"
-                                        aria-label="Compact sidebar"
-                                    >
-                                    <span class="toggle-track" aria-hidden="true">
-                                        <span class="toggle-thumb"></span>
-                                    </span>
-                                </label>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="settings-group" aria-labelledby="settings-security-title">
-                        <div class="settings-group-header">
-                            <h4 id="settings-security-title">Session &amp; security</h4>
-                            <p>Control access to your account on this device.</p>
-                        </div>
-
-                        <div class="settings-list">
-                            <div class="setting-row">
-                                <div class="setting-info">
-                                    <span class="setting-icon" aria-hidden="true">&#128274;</span>
-                                    <div>
-                                        <strong>Session protection</strong>
-                                        <p>Your session uses an HttpOnly cookie. Access tokens are never stored in browser storage.</p>
-                                    </div>
-                                </div>
-                                <span class="settings-badge settings-badge--success">Protected</span>
-                            </div>
-
-                            <div class="setting-row">
-                                <div class="setting-info">
-                                    <span class="setting-icon" aria-hidden="true">&#9099;</span>
-                                    <div>
-                                        <strong>Sign out of this device</strong>
-                                        <p>End this browser session. You will be asked to confirm first.</p>
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    class="setting-button setting-button--danger"
-                                    id="settings-signout"
-                                    data-logout-trigger
-                                >
-                                    Sign out
-                                </button>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="settings-group" aria-labelledby="settings-privacy-title">
-                        <div class="settings-group-header">
-                            <h4 id="settings-privacy-title">Data &amp; privacy</h4>
-                            <p>How your business information is protected.</p>
-                        </div>
-
-                        <div class="settings-list">
-                            <div class="setting-row">
-                                <div class="setting-info">
-                                    <span class="setting-icon" aria-hidden="true">&#9681;</span>
-                                    <div>
-                                        <strong>Workspace isolation</strong>
-                                        <p>Customer and proposal records are isolated per workspace by database row-level security.</p>
-                                    </div>
-                                </div>
-                                <span class="settings-badge settings-badge--success">RLS active</span>
-                            </div>
-
-                            <div class="setting-row">
-                                <div class="setting-info">
-                                    <span class="setting-icon" aria-hidden="true">&#8635;</span>
-                                    <div>
-                                        <strong>Deleted records</strong>
-                                        <p>Deleted customer records are hidden immediately and retained for the 30-day recovery window.</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
->>>>>>> origin/main
-
-                </div>
-
-            </section>
-
-
             <!-- FOOTER -->
             <footer class="dashboard-footer">
                 <span>© 2026 FinEx. All rights reserved.</span>
@@ -1265,8 +899,6 @@
     ></div>
 
 
-<<<<<<< HEAD
-=======
     <!-- LOGOUT CONFIRMATION -->
     <dialog
         id="logout-dialog"
@@ -1312,7 +944,6 @@
 
 
     <script src="../js/api.js"></script>
->>>>>>> origin/main
     <script src="../js/dashboard.js"></script>
 
 </body>
