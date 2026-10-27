@@ -41,7 +41,7 @@ from app.core.sessions import (
     revoke_all_user_tokens,
     revoke_token,
 )
-from app.models.membership import Membership
+from app.models.membership import Membership, MembershipStatus
 from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.auth import (
@@ -92,7 +92,12 @@ async def _load_memberships(
         await session.execute(
             select(Membership, Organization.name)
             .join(Organization, Organization.id == Membership.org_id)
-            .where(Membership.user_id == user_id)
+            .where(
+                Membership.user_id == user_id,
+                # Pending invitations and suspended memberships grant no
+                # session. Only active memberships are selectable here.
+                Membership.status == MembershipStatus.ACTIVE.value,
+            )
             .order_by(Membership.created_at)
         )
     ).all()
@@ -192,6 +197,7 @@ async def add_membership(
     user_id: uuid.UUID,
     org_id: uuid.UUID,
     role: str = Role.STAFF.value,
+    status: MembershipStatus | str = MembershipStatus.ACTIVE,
     is_default: bool = False,
     actor_role: str = Role.OWNER.value,
 ) -> Membership:
@@ -199,15 +205,19 @@ async def add_membership(
 
     ``actor_role`` is the *acting* principal's role, not the role being
     granted. It defaults to owner because the only current callers are
-    self-serve registration and test setup. Future staff-management paths must
-    pass the real actor role so the membership RLS write policy can reject
+    self-serve registration and test setup. Staff-management paths must pass
+    the real actor role so the membership RLS write policy can reject
     staff/admin escalation.
     """
     await bind_session_context(
         session, org_id=org_id, user_id=user_id, role=actor_role
     )
     membership = Membership(
-        org_id=org_id, user_id=user_id, role=role, is_default=is_default
+        org_id=org_id,
+        user_id=user_id,
+        role=role,
+        status=MembershipStatus(status).value,
+        is_default=is_default,
     )
     session.add(membership)
     await session.flush()

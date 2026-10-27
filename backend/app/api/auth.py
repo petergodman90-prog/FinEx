@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +31,11 @@ from app.schemas.auth import (
     SwitchOrgRequest,
     TokenResponse,
 )
-from app.services import auth_service
+from app.schemas.staff import (
+    InvitationDecisionOut,
+    PendingInvitationOut,
+)
+from app.services import auth_service, staff_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -153,3 +159,37 @@ async def me(
     session: AsyncSession = Depends(get_db),
 ) -> MeResponse:
     return await auth_service.me(session, user)
+
+
+@router.get("/invitations", response_model=list[PendingInvitationOut])
+async def my_invitations(
+    user: TokenPayload = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[PendingInvitationOut]:
+    """Pending staff invitations addressed to the signed-in account."""
+    return await staff_service.list_my_invitations(session, user)
+
+
+@router.post(
+    "/invitations/{membership_id}/accept",
+    response_model=InvitationDecisionOut,
+)
+async def accept_invitation(
+    membership_id: uuid.UUID,
+    user: TokenPayload = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> InvitationDecisionOut:
+    """Activate a pending membership addressed to the signed-in account."""
+    return await staff_service.accept_invitation(session, membership_id, user)
+
+
+@router.post(
+    "/invitations/{membership_id}/decline",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def decline_invitation(
+    membership_id: uuid.UUID,
+    user: TokenPayload = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    await staff_service.decline_invitation(session, membership_id, user)

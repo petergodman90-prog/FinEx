@@ -1,7 +1,8 @@
-# Backend Foundation (Layers 1–6)
+# Backend Foundation (Layers 1–7)
 
-Status: complete and tested (105 tests green). Deferred by design: AI assistant
-NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
+Status: complete and tested (114 tests green). Deferred by design: AI assistant
+NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics,
+and email invitations for people who do not yet have a FinEx account.
 
 ## Layers
 
@@ -87,12 +88,46 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
   memberships policy into read-own/read-org SELECT plus owner/admin-only
   INSERT/UPDATE/DELETE, blocking staff self-promotion.
 - `alembic check` is clean (models ↔ migration zero drift).
-- `backend/tests` (105 tests): auth flows, refresh rotation/revocation,
+- `backend/tests` (114 tests): auth flows, refresh rotation/revocation,
   customers CRUD/dedup/merge/permissions, proposal idempotency/caps/expiry,
-  dashboard metrics, RBAC matrix, crypto (encrypt/blind index), RLS
-  enabled+forced and cross-tenant isolation — including behavioral checks that
-  run as `SET ROLE finex_app`, ledger posting/receipt isolation, safe views,
-  cross-tenant posting rejection, and posting idempotency.
+  dashboard metrics, RBAC matrix, staff lifecycle/invitations, crypto
+  (encrypt/blind index), RLS enabled+forced and cross-tenant isolation —
+  including behavioral checks that run as `SET ROLE finex_app`, ledger
+  posting/receipt isolation, safe views, cross-tenant posting rejection, and
+  posting idempotency.
+
+### 7. Staff & membership
+- `backend/migrations/versions/006_staff_membership.py` adds membership
+  lifecycle status (`active`, `pending`, `suspended`), display-only job
+  titles, department and manager links, plus tenant-scoped `departments` and
+  `staff_roles` tables. All three tables are RLS-enabled and forced.
+- `app/services/staff_service.py` + `app/api/staff.py`:
+  - `GET /api/v1/staff` (manager-or-higher) returns the directory and summary
+    counts; `POST /api/v1/staff` invites an existing FinEx account.
+  - `PATCH /api/v1/staff/{membership_id}` updates access role, job title,
+    department, reporting line, or status; `DELETE` dismisses the member.
+  - `/api/v1/staff/departments` and `/api/v1/staff/roles` manage organization
+    metadata. Custom job-title roles are display-only and never grant RBAC
+    access.
+- Invitee endpoints: `GET /api/v1/auth/invitations`,
+  `POST /api/v1/auth/invitations/{membership_id}/accept`, and
+  `POST /api/v1/auth/invitations/{membership_id}/decline`. Pending rows grant
+  no workspace access until accepted. The invitee can only change the status
+  of their own pending row; a trigger blocks role/org/manager edits during
+  self-accept.
+- Authorization rules: reads require manager+; all mutations require
+  owner/admin. Admins cannot modify owners or other admins, and cannot grant a
+  role at or above their own. Owners can grant owner/admin. Nobody can change
+  their own role/status or dismiss themselves, and the last active owner cannot
+  be removed or demoted.
+- Suspension, dismissal, and access-role changes revoke all of that user's
+  sessions immediately (including sessions in other workspaces). Global user
+  name/email are never editable from one tenant's staff screen.
+- Managers must be active members of the same workspace; reporting-line cycles
+  are rejected. Department/role deletion requires reassigning staff first.
+- `pages/staff.html` + `js/staff.js` are now wired to these endpoints: live
+  directory, search/filter, invite, edit, suspend/restore, dismiss, department
+  and role management, organogram, and invitee accept/decline.
 
 ## Run / test
 
@@ -109,7 +144,9 @@ pytest -q                         # Postgres required; Redis is faked (fakeredis
 ## Security invariants (enforced, not aspirational)
 - Every tenant table has RLS enabled + forced with the org policy; the app
   role cannot bypass it (NOBYPASSRLS, plus behavioral `SET ROLE` tests).
-  Membership writes are further restricted to the active org's owner/admin.
+  Membership writes are further restricted to the active org's owner/admin;
+  admin writes cannot touch owner/admin rows. Staff self-accept can only
+  activate the invitee's own pending row, never change its role or links.
 - PII columns hold ciphertext; lookups go through the HMAC blind index.
 - No raw PII in logs (logging filter).
 - Soft delete only (`deleted_at`); queries and unique indexes honor it.

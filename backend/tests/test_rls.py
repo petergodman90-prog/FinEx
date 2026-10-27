@@ -150,6 +150,10 @@ def _values_for(table_name: str, g: dict) -> dict:
         }
     if table_name == "audit_logs":
         return {"action": f"probe-{uuid.uuid4().hex[:6]}"}
+    if table_name == "departments":
+        return {"name": f"Probe Dept {uuid.uuid4().hex[:6]}"}
+    if table_name == "staff_roles":
+        return {"name": f"Probe Role {uuid.uuid4().hex[:6]}"}
     raise AssertionError(f"no probe values defined for {table_name}")
 
 
@@ -244,6 +248,56 @@ async def test_membership_self_escalation_is_blocked(graph: dict) -> None:
                 .values(role="admin")
             )
             assert result.rowcount == 1
+        finally:
+            await session.rollback()
+            await session.execute(text("RESET ROLE"))
+
+
+async def test_admin_cannot_modify_admin_or_owner_rows(graph: dict) -> None:
+    """Database policy mirrors the service rule: admins manage lower roles only."""
+    memberships = Base.metadata.tables["memberships"]
+    async with SessionLocal() as session:
+        await bind_session_context(
+            session, org_id=graph["org_a"], user_id=graph["user_a"], role="owner"
+        )
+        await session.execute(
+            insert(memberships).values(
+                org_id=graph["org_a"], user_id=graph["user_c"], role="admin"
+            )
+        )
+        await session.commit()
+
+    async with SessionLocal() as session:
+        await session.execute(text(f"SET ROLE {APP_DB_ROLE}"))
+        try:
+            await bind_session_context(
+                session,
+                org_id=graph["org_a"],
+                user_id=graph["user_c"],
+                role="admin",
+            )
+
+            # An admin cannot demote an owner...
+            owner_update = await session.execute(
+                update(memberships)
+                .where(
+                    memberships.c.org_id == graph["org_a"],
+                    memberships.c.user_id == graph["user_a"],
+                )
+                .values(role="admin")
+            )
+            assert owner_update.rowcount == 0
+
+            # ...and cannot edit another admin (including their own row).
+            admin_update = await session.execute(
+                update(memberships)
+                .where(
+                    memberships.c.org_id == graph["org_a"],
+                    memberships.c.user_id == graph["user_c"],
+                )
+                .values(job_title="Escalated")
+            )
+            assert admin_update.rowcount == 0
         finally:
             await session.rollback()
             await session.execute(text("RESET ROLE"))

@@ -43,17 +43,46 @@ def default_policy_expression() -> str:
 # before an active org exists. Writes are deliberately not self-service: only
 # an owner/admin acting in the active org may add, change or remove a
 # membership. Otherwise a staff row could promote itself to owner.
-_MEMBERSHIP_ROLES = "'owner', 'admin'"
 _MEMBERSHIP_SELECT = (
     f"org_id = current_setting('{GUC_ORG}', true)::uuid"
     f" OR user_id = current_setting('{GUC_USER}', true)::uuid"
 )
+# Owner/admin only. Admins must not touch an owner row, and a pending invite
+# may only be activated/deleted by the invitee (see the update/delete
+# policies below). The self-accept guard trigger in migration 006 prevents
+# the invitee from changing any field other than ``status`` while accepting.
 _MEMBERSHIP_WRITE = (
     f"org_id = current_setting('{GUC_ORG}', true)::uuid"
-    f" AND current_setting('{GUC_ROLE}', true) IN ({_MEMBERSHIP_ROLES})"
+    " AND ("
+    f"current_setting('{GUC_ROLE}', true) = 'owner'"
+    " OR ("
+    f"current_setting('{GUC_ROLE}', true) = 'admin'"
+    " AND role NOT IN ('owner', 'admin'))"
+    ")"
+)
+_MEMBERSHIP_SELF_PENDING = (
+    f"user_id = current_setting('{GUC_USER}', true)::uuid"
+    " AND status = 'pending'"
+)
+_MEMBERSHIP_SELF_ACTIVE = (
+    f"user_id = current_setting('{GUC_USER}', true)::uuid"
+    " AND status = 'active'"
+)
+_STAFF_READ_ROLES = "'manager', 'admin', 'owner'"
+_STAFF_WRITE_ROLES = "'owner', 'admin'"
+_STAFF_TABLES = {"departments", "staff_roles"}
+_STAFF_READ = (
+    f"org_id = current_setting('{GUC_ORG}', true)::uuid"
+    f" AND current_setting('{GUC_ROLE}', true) IN ({_STAFF_READ_ROLES})"
+)
+_STAFF_WRITE = (
+    f"org_id = current_setting('{GUC_ORG}', true)::uuid"
+    f" AND current_setting('{GUC_ROLE}', true) IN ({_STAFF_WRITE_ROLES})"
 )
 _POLICY_OVERRIDES: dict[str, str] = {
     "memberships": _MEMBERSHIP_SELECT,
+    "departments": _STAFF_READ,
+    "staff_roles": _STAFF_READ,
 }
 
 
@@ -71,6 +100,15 @@ def membership_policy_names() -> list[str]:
         "memberships_insert",
         "memberships_update",
         "memberships_delete",
+    ]
+
+
+def staff_policy_names(table_name: str) -> list[str]:
+    return [
+        f"{table_name}_select",
+        f"{table_name}_insert",
+        f"{table_name}_update",
+        f"{table_name}_delete",
     ]
 
 
@@ -100,11 +138,41 @@ def rls_statements(table_name: str) -> list[str]:
             ),
             (
                 "CREATE POLICY memberships_update ON memberships FOR UPDATE "
-                f"USING ({_MEMBERSHIP_WRITE}) WITH CHECK ({_MEMBERSHIP_WRITE})"
+                f"USING (({_MEMBERSHIP_WRITE}) OR ({_MEMBERSHIP_SELF_PENDING})) "
+                "WITH CHECK ("
+                f"({_MEMBERSHIP_WRITE}) OR ({_MEMBERSHIP_SELF_ACTIVE})"
+                ")"
             ),
             (
                 "CREATE POLICY memberships_delete ON memberships FOR DELETE "
-                f"USING ({_MEMBERSHIP_WRITE})"
+                f"USING (({_MEMBERSHIP_WRITE}) OR ({_MEMBERSHIP_SELF_PENDING}))"
+            ),
+        ]
+
+    if table_name in _STAFF_TABLES:
+        return [
+            f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY",
+            f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY",
+            f"DROP POLICY IF EXISTS {policy_name(table_name)} ON {table_name}",
+            *(
+                f"DROP POLICY IF EXISTS {name} ON {table_name}"
+                for name in staff_policy_names(table_name)
+            ),
+            (
+                f"CREATE POLICY {table_name}_select ON {table_name} FOR SELECT "
+                f"USING ({_STAFF_READ})"
+            ),
+            (
+                f"CREATE POLICY {table_name}_insert ON {table_name} FOR INSERT "
+                f"WITH CHECK ({_STAFF_WRITE})"
+            ),
+            (
+                f"CREATE POLICY {table_name}_update ON {table_name} FOR UPDATE "
+                f"USING ({_STAFF_WRITE}) WITH CHECK ({_STAFF_WRITE})"
+            ),
+            (
+                f"CREATE POLICY {table_name}_delete ON {table_name} FOR DELETE "
+                f"USING ({_STAFF_WRITE})"
             ),
         ]
 
@@ -131,6 +199,17 @@ def disable_rls_statements(table_name: str) -> list[str]:
             f"DROP POLICY IF EXISTS {policy_name('memberships')} ON memberships",
             "ALTER TABLE memberships NO FORCE ROW LEVEL SECURITY",
             "ALTER TABLE memberships DISABLE ROW LEVEL SECURITY",
+        ]
+
+    if table_name in _STAFF_TABLES:
+        return [
+            *(
+                f"DROP POLICY IF EXISTS {name} ON {table_name}"
+                for name in staff_policy_names(table_name)
+            ),
+            f"DROP POLICY IF EXISTS {policy_name(table_name)} ON {table_name}",
+            f"ALTER TABLE {table_name} NO FORCE ROW LEVEL SECURITY",
+            f"ALTER TABLE {table_name} DISABLE ROW LEVEL SECURITY",
         ]
 
     return [
