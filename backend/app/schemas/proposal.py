@@ -46,6 +46,8 @@ class ProposalOut(BaseModel):
     decided_by_id: uuid.UUID | None = None
     decided_at: datetime | None = None
     decision_note: str | None = None
+    journal_entry_id: uuid.UUID | None = None
+    posting_error: dict | None = None
     created_at: datetime
     updated_at: datetime
 

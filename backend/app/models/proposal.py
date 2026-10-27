@@ -77,6 +77,15 @@ class Proposal(Base, OrgScopedMixin, TimestampMixin, SoftDeleteMixin):
     )
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Set only after the posting service has written the ledger entry. There is
+    # deliberately no cross-schema FK: the ledger remains independently usable.
+    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True
+    )
+    # Last posting failure: {code, message, retryable, details}, cleared on
+    # success. A failed approval stays ``approved`` so it can be retried.
+    posting_error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     __table_args__ = (
         Index(
             "uq_proposals_org_idem_pending",

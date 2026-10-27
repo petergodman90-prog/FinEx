@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import update
 
 from app.core.db import SessionLocal
 from app.core.rls import bind_session_context
 from app.models.proposal import Proposal
+from app.services import posting_service
 
 
 def _h(token: str) -> dict[str, str]:
@@ -238,3 +239,141 @@ async def test_proposal_expiry_flow(client, register_user) -> None:
 
     detail = await client.get(f"/api/v1/proposals/{proposal_id}", headers=h)
     assert detail.json()["status"] == "expired"
+
+
+def _expense_payload() -> dict:
+    return {
+        "amount": "250.00",
+        "currency": "NGN",
+        "effective_at": "2026-10-22T09:00:00+01:00",
+        "expense_account_code": "6100",
+        "category": "rent",
+        "vendor": "Lagos Property Ltd",
+        "description": "October rent",
+        "payment": {"method": "cash", "cash_account_code": "1000"},
+    }
+
+
+async def test_approval_posts_and_marks_proposal_applied(client, register_user) -> None:
+    reg = await register_user()
+    h = _h(reg["access_token"])
+
+    created = await client.post(
+        "/api/v1/proposals",
+        json={
+            "proposal_type": "expense",
+            "title": "October rent",
+            "payload": _expense_payload(),
+            "amount": "250.00",
+            "currency": "NGN",
+        },
+        headers=h,
+    )
+    assert created.status_code == 200, created.text
+    proposal_id = created.json()["proposal"]["id"]
+
+    approved = await client.post(
+        f"/api/v1/proposals/{proposal_id}/approve", json={}, headers=h
+    )
+    assert approved.status_code == 200, approved.text
+    body = approved.json()
+    assert body["status"] == "applied"
+    assert body["journal_entry_id"] is not None
+    assert body["posting_error"] is None
+
+    # Posting retries are idempotent and return the original journal entry.
+    replayed = await client.post(
+        f"/api/v1/proposals/{proposal_id}/post", headers=h
+    )
+    assert replayed.status_code == 200, replayed.text
+    assert replayed.json()["journal_entry_id"] == body["journal_entry_id"]
+
+
+async def test_posting_failure_is_recorded_and_retry_posts(
+    client, register_user
+) -> None:
+    reg = await register_user()
+    h = _h(reg["access_token"])
+    org_id = uuid.UUID(reg["active_org_id"])
+    user_id = uuid.UUID(reg["user"]["id"])
+    start, end = date(2026, 10, 1), date(2026, 10, 31)
+
+    async with SessionLocal() as session:
+        await bind_session_context(
+            session, org_id=org_id, user_id=user_id, role="owner"
+        )
+        await posting_service.create_accounting_period(
+            session, org_id, start=start, end=end, user_id=user_id
+        )
+        await posting_service.close_accounting_period(
+            session, org_id, start=start, end=end, user_id=user_id
+        )
+        await session.commit()
+
+    created = await client.post(
+        "/api/v1/proposals",
+        json={
+            "proposal_type": "expense",
+            "title": "October rent",
+            "payload": _expense_payload(),
+            "amount": "250.00",
+            "currency": "NGN",
+        },
+        headers=h,
+    )
+    proposal_id = created.json()["proposal"]["id"]
+
+    approved = await client.post(
+        f"/api/v1/proposals/{proposal_id}/approve", json={}, headers=h
+    )
+    assert approved.status_code == 200, approved.text
+    body = approved.json()
+    assert body["status"] == "approved"
+    assert body["journal_entry_id"] is None
+    assert body["posting_error"]["code"] == "closed_period"
+    assert body["posting_error"]["retryable"] is True
+
+    async with SessionLocal() as session:
+        await bind_session_context(
+            session, org_id=org_id, user_id=user_id, role="owner"
+        )
+        await posting_service.reopen_accounting_period(
+            session, org_id, start=start, end=end, user_id=user_id
+        )
+        await session.commit()
+
+    retried = await client.post(
+        f"/api/v1/proposals/{proposal_id}/post", headers=h
+    )
+    assert retried.status_code == 200, retried.text
+    body = retried.json()
+    assert body["status"] == "applied"
+    assert body["journal_entry_id"] is not None
+    assert body["posting_error"] is None
+
+    replay = await client.post(f"/api/v1/proposals/{proposal_id}/post", headers=h)
+    assert replay.json()["journal_entry_id"] == body["journal_entry_id"]
+
+
+async def test_manual_proposal_is_never_posted(client, register_user) -> None:
+    reg = await register_user()
+    h = _h(reg["access_token"])
+
+    created = await client.post(
+        "/api/v1/proposals",
+        json={"proposal_type": "manual", "title": "Note for the owner"},
+        headers=h,
+    )
+    proposal_id = created.json()["proposal"]["id"]
+
+    approved = await client.post(
+        f"/api/v1/proposals/{proposal_id}/approve", json={}, headers=h
+    )
+    assert approved.status_code == 200, approved.text
+    body = approved.json()
+    assert body["status"] == "approved"
+    assert body["journal_entry_id"] is None
+    assert body["posting_error"] is None
+
+    retry = await client.post(f"/api/v1/proposals/{proposal_id}/post", headers=h)
+    assert retry.status_code == 409
