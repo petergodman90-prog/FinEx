@@ -3553,6 +3553,87 @@ select:focus-visible {
     color: var(--text-muted);
 }
 
+/* Administrator disclosure menu on the dashboard. */
+.dashboard-page .administrator-menu-wrap {
+    position: relative;
+}
+
+.dashboard-page .administrator-menu-trigger {
+    color: var(--text-primary);
+    background: transparent;
+    font: inherit;
+    text-align: left;
+}
+
+.dashboard-page .administrator-menu-trigger:focus-visible {
+    outline: 2px solid var(--green-light);
+    outline-offset: 2px;
+}
+
+.dashboard-page .administrator-menu-trigger .profile-avatar {
+    display: grid;
+    place-items: center;
+}
+
+.dashboard-page .administrator-menu-trigger .profile-avatar svg {
+    width: 19px;
+    height: 19px;
+}
+
+.dashboard-page .administrator-menu {
+    position: absolute;
+    z-index: 50;
+    top: calc(100% + 9px);
+    right: 0;
+    display: flex;
+    width: min(240px, calc(100vw - 32px));
+    flex-direction: column;
+    padding: 7px;
+    background: rgba(15, 23, 42, 0.97);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+}
+
+.dashboard-page .administrator-menu[hidden] {
+    display: none;
+}
+
+.dashboard-page .administrator-menu-link {
+    display: block;
+    width: 100%;
+    padding: 10px 11px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.dashboard-page .administrator-menu-link:hover,
+.dashboard-page .administrator-menu-link:focus-visible {
+    color: var(--text-primary);
+    background: rgba(16, 185, 129, 0.12);
+    outline: none;
+}
+
+.dashboard-page .administrator-menu-signout {
+    margin-top: 4px;
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+:root[data-theme="light"] .dashboard-page .administrator-menu {
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
 /* ==================== SETTINGS GROUPS ==================== */
 
 .settings-groups {

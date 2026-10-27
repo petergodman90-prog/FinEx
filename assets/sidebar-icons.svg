@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-dashboard" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>
+    </symbol>
+    <symbol id="icon-sales" viewBox="0 0 24 24">
+        <path d="M3 17 9 11l4 4 8-9"/><path d="M15 6h6v6"/>
+    </symbol>
+    <symbol id="icon-transactions" viewBox="0 0 24 24">
+        <path d="M7 7h13l-3-3"/><path d="m20 7-3 3"/><path d="M17 17H4l3 3"/><path d="m4 17 3-3"/>
+    </symbol>
+    <symbol id="icon-products" viewBox="0 0 24 24">
+        <path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="M3 12v5l9 5 9-5v-5"/><path d="M12 13v9"/>
+    </symbol>
+    <symbol id="icon-product-list" viewBox="0 0 24 24">
+        <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4.5 8 7.5 4 7.5-4M12 12v8"/>
+    </symbol>
+    <symbol id="icon-stock-adjustment" viewBox="0 0 24 24">
+        <path d="M5 4v16M12 4v16M19 4v16"/><path d="M2 9h6M9 15h6M16 7h6"/>
+    </symbol>
+    <symbol id="icon-customers" viewBox="0 0 24 24">
+        <circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1.5a6.5 6.5 0 0 1 13 0V20Z"/><path d="M16 5.2a3.5 3.5 0 0 1 0 6.6M18 14a5.5 5.5 0 0 1 3.5 5.2V20"/>
+    </symbol>
+    <symbol id="icon-ledger" viewBox="0 0 24 24">
+        <path d="M6 3h12a2 2 0 0 1 2 2v16H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/><path d="M3 18a3 3 0 0 1 3-3h14M8 7h7M8 11h7"/>
+    </symbol>
+    <symbol id="icon-businesses" viewBox="0 0 24 24">
+        <path d="m3 9 2-5h14l2 5M4 9v11h16V9M2.5 9h19"/><path d="M9 20v-6h6v6M7 9v2a2 2 0 0 0 4 0V9m0 0v2a2 2 0 0 0 4 0V9m0 0v2a2 2 0 0 0 4 0V9"/>
+    </symbol>
+    <symbol id="icon-staff" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="3.5"/><path d="M4 21v-1.5a8 8 0 0 1 16 0V21Z"/>
+    </symbol>
+    <symbol id="icon-social" viewBox="0 0 24 24">
+        <circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="m8.7 10.7 6.6-3.4M8.7 13.3l6.6 3.4"/>
+    </symbol>
+    <symbol id="icon-whatsapp" viewBox="0 0 24 24">
+        <path d="M20.5 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20l1.2-4.6a8.5 8.5 0 1 1 16.3-3.9Z"/><path d="M8.5 8.2c.4-.6.8-.5 1.1-.5l.8 1.8-.7 1c.7 1.4 1.7 2.3 3.1 3l.9-.8 1.9.8c.2.1.2.7-.2 1.2-.4.5-1.2.9-2 .8-1.1-.2-2.6-.9-4-2.3-1.3-1.3-2-2.8-2.1-3.8-.1-.5.3-.9 1.2-1.2Z"/>
+    </symbol>
+    <symbol id="icon-instagram" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/>
+    </symbol>
+    <symbol id="icon-expenses" viewBox="0 0 24 24">
+        <rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M7 15h3"/><path d="M7 5V3h10v2"/>
+    </symbol>
+    <symbol id="icon-analytics" viewBox="0 0 24 24">
+        <path d="M3 3v18h18"/><path d="M8 16v-5M13 16V7M18 16v-8"/>
+    </symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24">
+        <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="m19.4 15 .1.1a1.8 1.8 0 1 1-2.5 2.5l-.2-.1a1.8 1.8 0 0 0-3 .9v.2a1.8 1.8 0 1 1-3.6 0v-.2a1.8 1.8 0 0 0-3-.9l-.1.1a1.8 1.8 0 1 1-2.5-2.5l.1-.1a1.8 1.8 0 0 0-.9-3H3.6a1.8 1.8 0 1 1 0-3.6h.2a1.8 1.8 0 0 0 .9-3l-.1-.1a1.8 1.8 0 1 1 2.5-2.5l.1.1a1.8 1.8 0 0 0 3-.9v-.2a1.8 1.8 0 1 1 3.6 0v.2a1.8 1.8 0 0 0 3 .9l.2-.1a1.8 1.8 0 1 1 2.5 2.5l-.1.1a1.8 1.8 0 0 0 .9 3h.2a1.8 1.8 0 1 1 0 3.6h-.2a1.8 1.8 0 0 0-.9 3Z"/>
+    </symbol>
+    <symbol id="icon-support" viewBox="0 0 24 24">
+        <path d="M3 13v-2a9 9 0 0 1 18 0v2"/><path d="M3 13h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Zm18 0h-3a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-5Z"/><path d="M18 20a6 6 0 0 1-5 2"/>
+    </symbol>
+    <symbol id="icon-logout" viewBox="0 0 24 24">
+        <path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5"/><path d="m15 16 4-4-4-4M19 12H9"/>
+    </symbol>
+    <symbol id="icon-directory" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16M11 9h6M11 13h6M11 17h4"/>
+    </symbol>
+    <symbol id="icon-departments" viewBox="0 0 24 24">
+        <rect x="9" y="3" width="6" height="5" rx="1"/><rect x="2.5" y="16" width="6" height="5" rx="1"/><rect x="15.5" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M5.5 12h13M5.5 12v4m13-4v4"/>
+    </symbol>
+    <symbol id="icon-roles" viewBox="0 0 24 24">
+        <path d="M5 4h14v17l-7-4-7 4V4Z"/><path d="m12 7 1.2 2.4 2.7.4-2 1.9.5 2.7-2.4-1.3-2.4 1.3.5-2.7-2-1.9 2.7-.4L12 7Z"/>
+    </symbol>
+    <symbol id="icon-organogram" viewBox="0 0 24 24">
+        <rect x="9" y="2.5" width="6" height="4.5" rx="1"/><rect x="2" y="17" width="6" height="4.5" rx="1"/><rect x="9" y="17" width="6" height="4.5" rx="1"/><rect x="16" y="17" width="6" height="4.5" rx="1"/><path d="M12 7v5M5 12h14M5 12v5m7-5v5m7-5v5"/>
+    </symbol>
+</svg>

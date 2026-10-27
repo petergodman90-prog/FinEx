@@ -1,0 +1,791 @@
+/* Staff Management component styles extracted from the original stash.
+   Shared layout, form, table, theme variables, and sidebar behavior remain in dashboard.css. */
+
+.panel[aria-labelledby="staff-directory-title"] {
+    scroll-margin-top: 24px;
+}
+
+#staff-directory-table th:last-child,
+#staff-directory-table td:last-child {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: var(--bg-card);
+    box-shadow: -1px 0 0 var(--border), -8px 0 12px rgba(0, 0, 0, 0.08);
+}
+
+#staff-directory-table th:last-child {
+    z-index: 2;
+}
+
+.staff-row-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.staff-row-actions .btn {
+    min-height: 36px;
+    padding: 8px 11px;
+}
+
+.staff-dialog-destructive-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+}
+
+.staff-dialog-destructive-actions[hidden] {
+    display: none;
+}
+
+.staff-dialog-destructive-actions .btn {
+    min-height: 40px;
+}
+
+.roles-panel {
+    margin-top: 24px;
+}
+
+.roles-table {
+    min-width: 620px;
+}
+
+.roles-table td {
+    vertical-align: middle;
+}
+
+.role-row-actions {
+    flex-wrap: nowrap;
+}
+
+.role-row-actions .btn {
+    min-height: 34px;
+    padding: 7px 10px;
+}
+
+.roles-feedback.is-error,
+.role-form-message {
+    color: var(--red);
+}
+
+.department-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+    gap: 14px;
+}
+
+.department-card {
+    min-width: 0;
+    padding: 18px;
+    color: var(--text-primary);
+    background: linear-gradient(145deg, rgba(148, 163, 184, 0.07), rgba(15, 23, 42, 0.18));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.department-card h4 {
+    color: var(--green-light);
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+.department-description,
+.department-empty-message {
+    margin-top: 7px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.department-staff-count {
+    margin-top: 14px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.department-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.department-actions .btn {
+    min-height: 34px;
+    padding: 7px 10px;
+}
+
+:root[data-theme="light"] .department-card {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(241, 245, 249, 0.9));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.role-form-message {
+    margin: 14px 0;
+    font-size: 12px;
+}
+
+.custom-role-dialog textarea.form-control {
+    min-height: 88px;
+    resize: vertical;
+}
+
+.role-picker {
+    min-width: 0;
+}
+
+.department-picker {
+    position: relative;
+    min-width: 0;
+}
+
+.department-picker [data-department-input] {
+    width: 100%;
+}
+
+.role-picker [data-role-input] {
+    width: 100%;
+}
+
+.role-suggestions,
+.role-create-prompt {
+    width: 100%;
+    margin-top: 2px;
+    overflow: hidden;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
+}
+
+.role-suggestions {
+    max-height: 168px;
+    overflow-y: auto;
+    padding: 4px;
+    list-style: none;
+}
+
+.role-suggestions[hidden],
+.role-create-prompt[hidden],
+.role-picker-message[hidden] {
+    display: none;
+}
+
+.role-suggestions [role="option"] {
+    padding: 9px 11px;
+    color: var(--text-secondary);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.role-suggestions [role="option"]:hover,
+.role-suggestions [role="option"][aria-selected="true"] {
+    color: var(--green-light);
+    background: var(--green-soft);
+}
+
+.role-create-prompt {
+    padding: 12px;
+    background-image: linear-gradient(145deg, rgba(52, 211, 153, 0.08), transparent 75%);
+    border-color: var(--border-glow);
+}
+
+.role-create-prompt p,
+.role-picker-message {
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.role-prompt-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.role-prompt-actions .btn {
+    min-height: 34px;
+    padding: 7px 11px;
+}
+
+.role-picker-message {
+    margin-top: 3px;
+}
+
+.role-picker-message[role="alert"] {
+    color: var(--red);
+}
+
+.role-picker-message.role-picker-success {
+    color: var(--green-light);
+}
+
+.btn.btn-staff-suspend,
+.btn.btn-staff-restore,
+.btn.btn-staff-dismiss {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.btn.btn-staff-suspend {
+    color: var(--red);
+    background: linear-gradient(145deg, rgba(251, 113, 133, 0.18), rgba(127, 29, 29, 0.1));
+    border-color: rgba(251, 113, 133, 0.38);
+}
+
+.btn.btn-staff-restore {
+    color: var(--green-light);
+    background: linear-gradient(145deg, rgba(52, 211, 153, 0.18), var(--green-soft));
+    border-color: var(--border-glow);
+}
+
+.btn.btn-staff-dismiss {
+    color: #fecdd3;
+    background: linear-gradient(145deg, rgba(15, 23, 42, 0.88), rgba(45, 18, 29, 0.78));
+    border-color: rgba(251, 113, 133, 0.48);
+}
+
+.btn.btn-staff-suspend:hover:not(:disabled) {
+    background: linear-gradient(145deg, rgba(251, 113, 133, 0.28), rgba(127, 29, 29, 0.18));
+    border-color: rgba(251, 113, 133, 0.58);
+    transform: translateY(-1px);
+}
+
+.btn.btn-staff-restore:hover:not(:disabled) {
+    background: linear-gradient(145deg, rgba(52, 211, 153, 0.3), rgba(16, 185, 129, 0.18));
+    border-color: var(--green-light);
+    transform: translateY(-1px);
+}
+
+.btn.btn-staff-dismiss:hover:not(:disabled) {
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.96), rgba(69, 10, 25, 0.9));
+    border-color: rgba(251, 113, 133, 0.72);
+    transform: translateY(-1px);
+}
+
+.btn.btn-staff-suspend:active:not(:disabled),
+.btn.btn-staff-restore:active:not(:disabled),
+.btn.btn-staff-dismiss:active:not(:disabled) {
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.24);
+    transform: translateY(0);
+}
+
+.btn.btn-staff-suspend:focus-visible,
+.btn.btn-staff-restore:focus-visible,
+.btn.btn-staff-dismiss:focus-visible {
+    outline: 2px solid var(--green-light);
+    outline-offset: 3px;
+}
+
+.staff-row-actions button[aria-label^="Manage "] {
+    color: var(--green-light);
+    background: var(--green-soft);
+    border-color: var(--border-glow);
+}
+
+.staff-row-actions button[aria-label^="Manage "]:hover {
+    color: #052e22;
+    background: var(--green-light);
+    border-color: var(--green-light);
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.16);
+}
+
+@media (max-width: 480px) {
+.staff-dialog-destructive-actions .btn {
+        flex: 1 1 130px;
+    }
+}
+
+@media (max-width: 650px) {
+.roles-panel .panel-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+.roles-panel .staff-add-open {
+        width: 100%;
+    }
+}
+
+
+
+/* ==================== STAFF DETAILS DIALOG ==================== */
+
+.staff-details-dialog {
+    width: min(100% - 32px, 480px);
+    max-width: 480px;
+    max-height: min(100% - 32px, 600px);
+    margin: auto;
+    padding: 24px;
+    color: var(--text-primary);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+}
+
+.staff-details-dialog::backdrop {
+    background: rgba(2, 6, 12, 0.72);
+    backdrop-filter: blur(3px);
+}
+
+.staff-details-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+}
+
+.staff-details-header h2 {
+    color: var(--green-light);
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.staff-details-list {
+    display: grid;
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.staff-details-list > div {
+    min-width: 0;
+}
+
+.staff-details-list dt {
+    margin-bottom: 3px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.staff-details-list dd {
+    overflow-wrap: anywhere;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.staff-details-list a {
+    color: var(--green-light);
+}
+
+.staff-details-list a:hover {
+    text-decoration: underline;
+}
+
+.staff-role-save-message {
+    margin: -6px 0 12px;
+    color: var(--green-light);
+    font-size: 11px;
+}
+
+.staff-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+@media (max-width: 480px) {
+.staff-details-dialog {
+        padding: 20px;
+    }
+
+.staff-edit-actions {
+        justify-content: flex-start;
+    }
+
+.staff-edit-actions .btn {
+        flex: 1 1 120px;
+    }
+}
+
+.staff-dismiss-copy {
+    margin: 20px 0;
+    color: var(--text-secondary);
+}
+
+.staff-dismiss-copy strong {
+    color: var(--text-primary);
+}
+
+.staff-dismiss-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.staff-dismiss-actions .btn {
+    min-height: 38px;
+}
+
+@media (max-width: 480px) {
+.staff-dismiss-actions {
+        justify-content: flex-start;
+    }
+
+.staff-dismiss-actions .btn {
+        flex: 1 1 130px;
+    }
+}
+
+.staff-page-heading {
+    min-width: 0;
+}
+
+.staff-add-open {
+    flex: 0 0 auto;
+    color: #052e22;
+    background: linear-gradient(145deg, rgba(52, 211, 153, 0.98), rgba(16, 185, 129, 0.92));
+    border-color: rgba(110, 231, 183, 0.72);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 8px 22px rgba(16, 185, 129, 0.14);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.staff-add-open:hover {
+    background: linear-gradient(145deg, #6ee7b7, #34d399);
+    border-color: #6ee7b7;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 10px 26px rgba(16, 185, 129, 0.2);
+    transform: translateY(-1px);
+}
+
+.staff-add-open:active {
+    transform: translateY(0);
+    box-shadow: inset 0 2px 5px rgba(5, 46, 34, 0.2);
+}
+
+.staff-add-open:focus-visible {
+    outline: 2px solid var(--green-light);
+    outline-offset: 3px;
+}
+
+.staff-add-feedback {
+    z-index: 2100;
+}
+
+.staff-add-intro {
+    margin: 18px 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.staff-optional-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+@media (max-width: 650px) {
+.staff-add-open {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+
+
+
+/* Let the Staff sidebar navigation scroll independently from its header/footer. */
+
+.staff-sidebar {
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.staff-sidebar .sidebar-header {
+    flex: 0 0 auto;
+}
+
+.staff-sidebar .sidebar-nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+}
+
+.staff-sidebar .sidebar-nav::-webkit-scrollbar {
+    width: 4px;
+}
+
+.staff-sidebar .sidebar-nav::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.55);
+    border-radius: 10px;
+}
+
+.staff-sidebar .sidebar-bottom {
+    flex: 0 0 auto;
+    margin-top: auto;
+    padding-top: 12px;
+}
+
+@media (max-height: 480px) {
+.staff-sidebar {
+        padding-top: 12px;
+        padding-bottom: 12px;
+    }
+
+.staff-sidebar .sidebar-header {
+        margin-bottom: 14px;
+    }
+
+.staff-sidebar .sidebar-bottom {
+        padding-top: 6px;
+    }
+}
+
+/* ==================== STAFF ORGANOGRAM ==================== */
+
+.organogram-panel {
+    margin-top: 24px;
+    scroll-margin-top: 24px;
+}
+
+.organogram-scroll {
+    min-width: 0;
+    overflow-x: auto;
+    padding: 4px 2px 14px;
+}
+
+.organogram-group + .organogram-group {
+    margin-top: 24px;
+}
+
+.organogram-group-title {
+    margin-bottom: 8px;
+    color: var(--green-light);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.organogram-tree,
+.organogram-children {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    width: max-content;
+    min-width: 100%;
+    padding: 0 12px;
+    list-style: none;
+}
+
+.organogram-children {
+    position: relative;
+    justify-content: center;
+    gap: 18px;
+    margin-top: 28px;
+}
+
+.organogram-children::before {
+    position: absolute;
+    top: 0;
+    right: 12px;
+    left: 12px;
+    height: 1px;
+    background: var(--border);
+    content: "";
+}
+
+.organogram-node > .organogram-children::after {
+    position: absolute;
+    top: -28px;
+    left: 50%;
+    width: 1px;
+    height: 28px;
+    background: var(--border);
+    content: "";
+}
+
+.organogram-node {
+    position: relative;
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+}
+
+.organogram-children > .organogram-node {
+    padding-top: 28px;
+}
+
+.organogram-children > .organogram-node::before {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 1px;
+    height: 28px;
+    background: var(--border);
+    content: "";
+}
+
+.organogram-person-card {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: flex-start;
+    width: min(220px, calc(100vw - 72px));
+    min-height: 116px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: linear-gradient(145deg, rgba(21, 32, 48, 0.75), var(--bg-card));
+    color: var(--text-primary);
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+
+button.organogram-person-card {
+    cursor: pointer;
+}
+
+.organogram-manager-card {
+    border-color: rgba(52, 211, 153, 0.42);
+    box-shadow: inset 0 2px 0 rgba(52, 211, 153, 0.55);
+}
+
+.organogram-person-card:focus-visible {
+    outline: 2px solid var(--green-light);
+    outline-offset: 3px;
+}
+
+.organogram-person-name {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.organogram-person-role {
+    margin-top: 3px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.organogram-person-department,
+.organogram-person-status,
+.organogram-team-count {
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 10px;
+}
+
+.organogram-person-status {
+    color: var(--text-secondary);
+}
+
+.organogram-team-count {
+    color: var(--green-light);
+    font-weight: 600;
+}
+
+.organogram-toggle-indicator {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--green-light);
+    border-bottom: 2px solid var(--green-light);
+    transform: rotate(45deg);
+}
+
+.organogram-manager-card[aria-expanded="false"] .organogram-toggle-indicator {
+    transform: rotate(-45deg);
+}
+
+.organogram-children[hidden] {
+    display: none !important;
+}
+
+.organogram-empty-state {
+    padding: 20px 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.organogram-review-group .organogram-group-title {
+    color: var(--text-secondary);
+}
+
+:root[data-theme="light"] .organogram-person-card {
+    background: linear-gradient(145deg, #ffffff, #f1f5f9);
+}
+
+:root[data-theme="light"] .organogram-manager-card {
+    border-color: rgba(4, 120, 87, 0.4);
+    box-shadow: inset 0 2px 0 rgba(4, 120, 87, 0.48);
+}
+
+:root[data-theme="light"] .organogram-toggle-indicator {
+    border-color: #047857;
+}
+
+@media (max-width: 650px) {
+.organogram-panel .panel-header {
+        align-items: flex-start;
+    }
+
+.organogram-tree {
+        gap: 14px;
+        padding-right: 8px;
+        padding-left: 8px;
+    }
+
+.organogram-children {
+        gap: 12px;
+    }
+}
+
+/* Light-theme colors for Staff icons using dashboard.css modifier classes. */
+:root[data-theme="light"] .staff-sidebar .nav-icon--purple {
+    --icon-color: #6d28d9;
+    --icon-bg: rgba(109, 40, 217, 0.08);
+    --icon-border: rgba(109, 40, 217, 0.18);
+}
+
+:root[data-theme="light"] .staff-sidebar .nav-icon--cyan {
+    --icon-color: #0f766e;
+    --icon-bg: rgba(15, 118, 110, 0.08);
+    --icon-border: rgba(15, 118, 110, 0.18);
+}
+
+:root[data-theme="light"] .staff-sidebar .nav-icon--indigo {
+    --icon-color: #4338ca;
+    --icon-bg: rgba(67, 56, 202, 0.08);
+    --icon-border: rgba(67, 56, 202, 0.18);
+}
+
+/* The sprite symbols contain geometry only, so provide the shared dashboard
+   line-icon paint on the Staff page's SVG instances. */
+.staff-sidebar .nav-icon svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Keep the active navigation icon emerald in both dashboard themes. */
+.staff-sidebar .nav-link.active .nav-icon {
+    color: var(--green-light);
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(52, 211, 153, 0.45);
+}

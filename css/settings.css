@@ -1,0 +1,391 @@
+/* Settings control centre. Shared colors, typography and panels come from dashboard.css. */
+.settings-main {
+    min-width: 0;
+}
+
+.settings-header {
+    margin-bottom: 26px;
+}
+
+.settings-header .eyebrow {
+    margin-bottom: 7px;
+    color: var(--green-light);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.13em;
+}
+
+.settings-header h1 {
+    color: var(--text-primary);
+    font-size: clamp(24px, 3vw, 31px);
+    font-weight: 800;
+    letter-spacing: -0.8px;
+}
+
+.settings-header p:last-child {
+    margin-top: 7px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.settings-layout {
+    display: grid;
+    grid-template-columns: minmax(205px, 245px) minmax(0, 1fr);
+    align-items: start;
+    gap: 20px;
+}
+
+.settings-navigation,
+.settings-page-card {
+    min-width: 0;
+    background: linear-gradient(145deg, rgba(28, 44, 61, 0.84), rgba(10, 17, 28, 0.94));
+    border-color: rgba(148, 163, 184, 0.2);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.settings-navigation {
+    padding: 17px 13px;
+}
+
+.settings-navigation-title {
+    margin: 2px 10px 12px;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.settings-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.settings-tab {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    min-height: 43px;
+    padding: 9px 11px 9px 15px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    text-align: left;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+    transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.settings-tab::before {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    margin-right: 11px;
+    background: rgba(148, 163, 184, 0.28);
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 50%;
+    content: "";
+}
+
+.settings-tab:hover {
+    color: var(--text-primary);
+    background: rgba(148, 163, 184, 0.065);
+    border-color: rgba(148, 163, 184, 0.12);
+}
+
+.settings-tab[aria-selected="true"] {
+    color: var(--green-light);
+    background: linear-gradient(100deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.045));
+    border-color: rgba(52, 211, 153, 0.22);
+    box-shadow: inset 0 0 18px rgba(16, 185, 129, 0.035);
+}
+
+.settings-tab[aria-selected="true"]::before {
+    background: var(--green-light);
+    border-color: var(--green-light);
+    box-shadow: 0 0 9px rgba(52, 211, 153, 0.45);
+}
+
+.settings-tab:focus-visible,
+.settings-page .setting-button:focus-visible {
+    outline: 2px solid var(--green-light);
+    outline-offset: 2px;
+}
+
+.settings-navigation-note {
+    margin: 15px 10px 1px;
+    color: var(--text-muted);
+    font-size: 10px;
+    line-height: 1.55;
+}
+
+.settings-content,
+.settings-panel {
+    min-width: 0;
+}
+
+.settings-panel[hidden] {
+    display: none !important;
+}
+
+.settings-page-card {
+    padding: 22px;
+    overflow: visible;
+    border-radius: var(--radius-lg);
+}
+
+.settings-section-heading {
+    margin-bottom: 20px;
+    padding-bottom: 17px;
+    border-bottom: 1px solid var(--border);
+}
+
+.settings-kicker {
+    margin-bottom: 7px;
+    color: var(--green-light);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: 0.12em;
+}
+
+.settings-section-heading h2 {
+    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 750;
+    letter-spacing: -0.25px;
+}
+
+.settings-section-heading > p:last-child {
+    margin-top: 5px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.settings-page-card .setting-row {
+    min-width: 0;
+    background: rgba(148, 163, 184, 0.045);
+}
+
+.settings-page-card .setting-info {
+    height: auto;
+    min-width: 0;
+}
+
+.settings-page-card .setting-info > div {
+    min-width: 0;
+}
+
+.settings-page-card .setting-info p {
+    max-width: 66ch;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.settings-note,
+.settings-placeholder {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.settings-note {
+    padding: 4px 2px 0;
+}
+
+.settings-page .setting-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    color: var(--text-primary);
+    background: rgba(148, 163, 184, 0.075);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.settings-page .setting-button:hover {
+    border-color: rgba(52, 211, 153, 0.38);
+    background: rgba(16, 185, 129, 0.09);
+}
+
+.settings-page .setting-button--danger {
+    color: #fca5a5;
+}
+
+.settings-page .setting-button--danger:hover {
+    border-color: rgba(248, 113, 113, 0.4);
+    background: rgba(239, 68, 68, 0.09);
+}
+
+.settings-page .settings-badge {
+    flex-shrink: 0;
+}
+
+.settings-page .settings-id {
+    margin-top: 3px;
+    overflow-wrap: anywhere;
+}
+
+.settings-empty-state {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    min-height: 190px;
+    padding: 30px 20px;
+    color: var(--text-muted);
+    background: rgba(148, 163, 184, 0.035);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    text-align: center;
+}
+
+.settings-empty-mark {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    color: var(--green-light);
+    background: var(--green-soft);
+    border-radius: 11px;
+    font-size: 18px;
+}
+
+.settings-empty-state h3 {
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.settings-empty-state p {
+    max-width: 42ch;
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .settings-navigation,
+    .settings-page-card {
+        -webkit-backdrop-filter: blur(14px) saturate(1.08);
+        backdrop-filter: blur(14px) saturate(1.08);
+    }
+}
+
+:root[data-theme="light"] .settings-navigation,
+:root[data-theme="light"] .settings-page-card {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.94));
+    border-color: rgba(148, 163, 184, 0.28);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.075), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+:root[data-theme="light"] .settings-page-card .setting-row,
+:root[data-theme="light"] .settings-empty-state {
+    background: rgba(148, 163, 184, 0.06);
+}
+
+:root[data-theme="light"] .settings-page .setting-button {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.8);
+}
+
+@media (max-width: 900px) {
+    .settings-layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 14px;
+    }
+
+    .settings-navigation {
+        padding: 15px;
+    }
+
+    .settings-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .settings-navigation-note {
+        display: none;
+    }
+}
+
+@media (max-width: 600px) {
+    .settings-header {
+        margin-bottom: 19px;
+    }
+
+    .settings-navigation {
+        padding: 12px;
+    }
+
+    .settings-tabs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .settings-tab {
+        min-height: 42px;
+        padding: 8px;
+        font-size: 11px;
+    }
+
+    .settings-tab::before {
+        margin-right: 8px;
+    }
+
+    .settings-page-card {
+        padding: 17px;
+    }
+
+    .settings-page-card .setting-row {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 13px;
+    }
+
+    .settings-page-card .setting-info {
+        flex: 1 1 100%;
+    }
+
+    .settings-page .setting-button {
+        min-height: 42px;
+    }
+}
+
+@media (max-width: 360px) {
+    .settings-tabs {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .settings-page *,
+    .settings-page *::before,
+    .settings-page *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}

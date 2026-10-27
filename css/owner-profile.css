@@ -1,0 +1,39 @@
+/* Owner profile surfaces use the shared FinEx dashboard tokens. */
+.owner-profile-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 18px 20px;
+    align-items: center;
+    max-width: 820px;
+    background: linear-gradient(145deg, rgba(28, 44, 61, 0.86), rgba(10, 17, 28, 0.94));
+    border-color: rgba(148, 163, 184, 0.2);
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.075);
+}
+.owner-profile-avatar {
+    display: grid;
+    width: 56px;
+    height: 56px;
+    place-items: center;
+    color: var(--green-light);
+    background: var(--green-soft);
+    border: 1px solid rgba(52, 211, 153, 0.25);
+    border-radius: 18px;
+}
+.owner-profile-avatar svg { width: 28px; height: 28px; }
+.owner-profile-page .settings-kicker { margin: 0 0 7px; color: var(--green-light); font-size: 9px; font-weight: 750; letter-spacing: 0.12em; }
+.owner-profile-card h2 { margin: 0; color: var(--text-primary); font-size: 22px; }
+.owner-profile-role { margin-top: 5px; color: var(--text-secondary); font-size: 12px; }
+.owner-profile-details { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.owner-profile-details div { min-width: 0; padding: 15px; background: rgba(148, 163, 184, 0.045); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.owner-profile-details dt { margin-bottom: 6px; color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.owner-profile-details dd { margin: 0; color: var(--text-primary); font-size: 13px; overflow-wrap: anywhere; }
+.owner-profile-message { grid-column: 1 / -1; min-height: 18px; margin: 0; color: var(--text-muted); font-size: 12px; }
+.owner-profile-card .setting-button { justify-self: start; }
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .owner-profile-card { -webkit-backdrop-filter: blur(14px) saturate(1.08); backdrop-filter: blur(14px) saturate(1.08); }
+}
+:root[data-theme="light"] .owner-profile-card { background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.94)); border-color: rgba(148, 163, 184, 0.28); box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.94); }
+:root[data-theme="light"] .owner-profile-details div { background: rgba(148, 163, 184, 0.07); }
+@media (max-width: 600px) {
+    .owner-profile-details { grid-template-columns: minmax(0, 1fr); }
+}
