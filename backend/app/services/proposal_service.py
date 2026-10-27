@@ -26,8 +26,9 @@ from app.core.auth import TokenPayload
 from app.core.rbac import SPEND_CAPS, Role, check_spend_cap
 from app.models.proposal import Proposal, ProposalStatus
 from app.schemas.proposal import ProposalCreate, ProposalOut
-from app.services import audit_service
+from app.services import audit_service, posting_service
 from app.services.errors import ConflictError, NotFoundError, PermissionDeniedError
+from app.services.posting_service import PostingError
 
 
 # ── Helpers ────────────────────────────────────────────────
@@ -73,6 +74,10 @@ def serialize_proposal(proposal: Proposal) -> ProposalOut:
         decided_by_id=proposal.decided_by_id,
         decided_at=proposal.decided_at,
         decision_note=proposal.decision_note,
+        journal_entry_id=proposal.journal_entry_id,
+        posting_error=dict(proposal.posting_error)
+        if proposal.posting_error is not None
+        else None,
         created_at=proposal.created_at,
         updated_at=proposal.updated_at,
     )
@@ -87,7 +92,15 @@ def _audit_snapshot(proposal: Proposal) -> dict:
         "amount": str(proposal.amount) if proposal.amount is not None else None,
         "currency": proposal.currency,
         "expires_at": proposal.expires_at.isoformat(),
+        "journal_entry_id": str(proposal.journal_entry_id)
+        if proposal.journal_entry_id is not None
+        else None,
+        "posting_error": proposal.posting_error,
     }
+
+
+def _is_manual(proposal: Proposal) -> bool:
+    return proposal.proposal_type.strip().lower() == "manual"
 
 
 async def _find_pending(
@@ -175,6 +188,59 @@ async def create_proposal(
     return proposal, True
 
 
+async def _attempt_posting(
+    session: AsyncSession, proposal: Proposal, actor: TokenPayload
+) -> Proposal:
+    """Post an approved proposal and record the ledger id or failure state.
+
+    The posting service uses a savepoint, so a failed attempt rolls back every
+    financial write while leaving this proposal update committable.
+    """
+    try:
+        result = await posting_service.post_proposal(
+            session,
+            org_id=proposal.org_id,
+            proposal_id=proposal.id,
+            proposal_type=proposal.proposal_type,
+            payload=proposal.payload,
+            amount=proposal.amount,
+            currency=proposal.currency,
+            requested_by=uuid.UUID(actor.sub),
+            role=actor.role,
+        )
+    except PostingError as exc:
+        proposal.posting_error = exc.as_dict()
+        await session.flush()
+        await session.refresh(proposal)
+        await audit_service.record(
+            session,
+            action="proposal.posting_failed",
+            entity_type="proposal",
+            entity_id=proposal.id,
+            after_state=_audit_snapshot(proposal),
+            meta={"error": exc.as_dict()},
+        )
+        return proposal
+
+    proposal.status = ProposalStatus.APPLIED.value
+    proposal.journal_entry_id = result.journal_entry_id
+    proposal.posting_error = None
+    await session.flush()
+    await session.refresh(proposal)
+    await audit_service.record(
+        session,
+        action="proposal.applied",
+        entity_type="proposal",
+        entity_id=proposal.id,
+        after_state=_audit_snapshot(proposal),
+        meta={
+            "journal_entry_id": str(result.journal_entry_id),
+            "replayed": result.replayed,
+        },
+    )
+    return proposal
+
+
 async def _decide(
     session: AsyncSession,
     proposal_id: uuid.UUID,
@@ -224,6 +290,8 @@ async def _decide(
         after_state=_audit_snapshot(proposal),
         meta={"note": note},
     )
+    if approve and not _is_manual(proposal):
+        return await _attempt_posting(session, proposal, actor)
     return proposal
 
 
@@ -243,6 +311,32 @@ async def reject_proposal(
     note: str | None = None,
 ) -> Proposal:
     return await _decide(session, proposal_id, actor, approve=False, note=note)
+
+
+async def post_approved_proposal(
+    session: AsyncSession,
+    proposal_id: uuid.UUID,
+    actor: TokenPayload,
+) -> Proposal:
+    """Retry posting for an approved proposal; applied proposals replay."""
+    proposal = await get_proposal(session, actor, proposal_id)
+    if _is_manual(proposal):
+        raise ConflictError(
+            "Manual proposals are informational and are never posted"
+        )
+    if (
+        proposal.status == ProposalStatus.APPLIED.value
+        and proposal.journal_entry_id is not None
+    ):
+        return proposal
+    if proposal.status not in {
+        ProposalStatus.APPROVED.value,
+        ProposalStatus.APPLIED.value,
+    }:
+        raise ConflictError(
+            f"Proposal is '{proposal.status}' and can no longer be posted"
+        )
+    return await _attempt_posting(session, proposal, actor)
 
 
 async def expire_pending(session: AsyncSession, actor: TokenPayload) -> list[str]:
