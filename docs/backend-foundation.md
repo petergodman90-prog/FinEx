@@ -1,6 +1,6 @@
-# Backend Foundation (Layers 1–8)
+# Backend Foundation (Layers 1–9)
 
-Status: complete and tested (122 tests green). Deferred by design: AI assistant
+Status: complete and tested (126 tests green). Deferred by design: AI assistant
 NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics,
 and email invitations for people who do not yet have a FinEx account.
 
@@ -98,7 +98,32 @@ and email invitations for people who do not yet have a FinEx account.
   `debts:read/write`. All roles may read; staff and above may write. Approval
   still requires `proposals:approve` (manager and above).
 
-### 7. Migration, roles, tests
+### 7. Products & inventory
+- `app/api/products.py` exposes `GET/POST /api/v1/products` and
+  `GET/PATCH /api/v1/products/{id}`. Product setup is a posting-service setup
+  call, not a financial posting. Updates cover sale price, default cost,
+  reorder point, and active status; SKU, name, and unit are immutable.
+- `app/api/inventory.py` exposes `GET /api/v1/inventory/stock-levels`,
+  `/stock-levels/{product_id}`, `/valuation`, and `/movements`. Stock levels use
+  products left-joined to movement aggregates, so zero-stock and reorder-due
+  products remain visible. Valuation reconciles movement book value against the
+  `1200` inventory account.
+- `POST /api/v1/inventory/opening-stock` stages an `opening_stock` proposal;
+  lines may omit `unit_cost`, in which case the product's current default cost
+  is used. Approval posts one `opening_balance` movement per product, debits
+  inventory, and credits opening equity.
+- `POST /api/v1/inventory/adjustments` stages a `stock_adjustment` proposal
+  with direction `in` or `out` and a required reason. Approval posts
+  `adjustment_in`/`adjustment_out` movements and balances inventory against the
+  `6600` inventory-variance account. Outbound proposals pre-check current stock;
+  the database still enforces non-negative stock at posting time.
+- Proposal totals are limited to two decimal places because the proposal header
+  stores a two-decimal amount. Both proposal types are listed and retrieved via
+  their `/opening-stock` and `/adjustments` collection endpoints.
+- New RBAC permissions: `inventory:read/write`. All roles may read; staff and
+  above may write. Stock-changing proposals still require manager approval.
+
+### 8. Migration, roles, tests
 - `backend/migrations/versions/001_initial_schema.py`: all tables, RLS
   (`ENABLE` + `FORCE` + policies generated from `rls.py`), the append-only
   audit trigger, `CREATE ROLE finex_app` (NOSUPERUSER, NOBYPASSRLS, NOLOGIN)
@@ -112,15 +137,16 @@ and email invitations for people who do not yet have a FinEx account.
   memberships policy into read-own/read-org SELECT plus owner/admin-only
   INSERT/UPDATE/DELETE, blocking staff self-promotion.
 - `alembic check` is clean (models ↔ migration zero drift).
-- `backend/tests` (122 tests): auth flows, refresh rotation/revocation,
+- `backend/tests` (126 tests): auth flows, refresh rotation/revocation,
   customers CRUD/dedup/merge/permissions, proposal idempotency/caps/expiry,
-  dashboard metrics, expenses/suppliers/debts/settlements, RBAC matrix, staff
+  dashboard metrics, expenses/suppliers/debts/settlements, product CRUD,
+  opening stock, stock adjustments/valuation, RBAC matrix, staff
   lifecycle/invitations, crypto (encrypt/blind index), RLS enabled+forced and
   cross-tenant isolation — including behavioral checks that run as
   `SET ROLE finex_app`, ledger posting/receipt isolation, safe views,
   cross-tenant posting rejection, and posting idempotency.
 
-### 8. Staff & membership
+### 9. Staff & membership
 - `backend/migrations/versions/006_staff_membership.py` adds membership
   lifecycle status (`active`, `pending`, `suspended`), display-only job
   titles, department and manager links, plus tenant-scoped `departments` and

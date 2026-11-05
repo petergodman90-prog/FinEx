@@ -51,6 +51,9 @@ PERMISSIONS: dict[str, set[Role]] = {
     # Debts
     "debts:read": {Role.VIEWER, Role.STAFF, Role.MANAGER, Role.ADMIN, Role.OWNER},
     "debts:write": {Role.STAFF, Role.MANAGER, Role.ADMIN, Role.OWNER},
+    # Products and inventory
+    "inventory:read": {Role.VIEWER, Role.STAFF, Role.MANAGER, Role.ADMIN, Role.OWNER},
+    "inventory:write": {Role.STAFF, Role.MANAGER, Role.ADMIN, Role.OWNER},
     # Proposals
     "proposals:read": {Role.VIEWER, Role.STAFF, Role.MANAGER, Role.ADMIN, Role.OWNER},
     "proposals:create": {Role.STAFF, Role.MANAGER, Role.ADMIN, Role.OWNER},

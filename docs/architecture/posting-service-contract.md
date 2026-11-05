@@ -247,6 +247,44 @@ Opening stock debits inventory `1200` and credits opening equity `3000`, and
 posts one `opening_balance` stock movement per product. The total cost must be
 positive. Each product may appear only once.
 
+### Stock adjustment
+
+Stock adjustments stage as a `stock_adjustment` proposal from
+`POST /api/v1/inventory/adjustments`, or may call the posting service directly
+during setup/migration work:
+
+```json
+{
+  "direction": "out",
+  "effective_at": "2026-10-22T09:00:00+01:00",
+  "reason": "Damaged goods",
+  "memo": "Warehouse write-off",
+  "lines": [
+    {
+      "product_id": "8a6d2c1f-3f4e-4b5a-8c7d-2e1f0a9b8c7d",
+      "quantity": "3",
+      "unit_cost": "100.00",
+      "description": "Torn shirts"
+    }
+  ]
+}
+```
+
+The API fills an omitted line `unit_cost` with the product's current default
+cost before staging. At posting time `unit_cost` is required in the payload.
+
+Stock adjustment rules:
+
+- `direction` is `"in"` or `"out"`. `"in"` debits inventory `1200` and credits
+  inventory variance `6600`; `"out"` reverses those lines.
+- Lines post `adjustment_in` or `adjustment_out` stock movements. Outbound
+  quantities are negative and the database enforces non-negative stock.
+- `reason` is required. The total cost must be positive, equal to
+  `proposals.amount` when set, and limited to two decimal places because the
+  proposal header stores a two-decimal amount.
+- Each product may appear only once. Stock-changing proposals still require
+  approval by a user with `proposals:approve`.
+
 ### Manual proposals
 
 **Manual proposals are informational only and are never posted.** They have no
@@ -266,6 +304,7 @@ The posting service exposes setup operations that Person B can wrap in APIs:
 | `create_product` / `update_product` | Product master, default cost, reorder point |
 | `create_supplier` | Minimal payable counterparty (no PII) |
 | `post_opening_stock` | Opening inventory and its journal entry |
+| `post_stock_adjustment` | Inventory adjustment and its journal entry |
 
 The seeded chart contains 19 accounts:
 
@@ -410,6 +449,7 @@ and `posting_error`.
 | `cross_org` | no | Session organisation differs from posting organisation |
 | `unbalanced_entry` | no | Journal debits do not equal credits |
 | `insufficient_stock` | yes | Stock would go negative; restock and retry |
+| `invalid_stock_adjustment` / `invalid_opening_stock` | no | The proposed stock value is not positive |
 | `closed_period` | yes | Effective date is in a closed accounting period |
 | `already_reversed` | no | A different reversal already exists |
 | `manual_not_postable` | no | Manual proposals are informational only |

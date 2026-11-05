@@ -51,6 +51,7 @@ OPENING_EQUITY = "3000"
 SALES_REVENUE = "4000"
 COGS = "5000"
 OPERATING_EXPENSES = "6000"
+INVENTORY_VARIANCE = "6600"
 
 EXPENSE_CATEGORY_ACCOUNTS = {
     "other": OPERATING_EXPENSES,
@@ -204,6 +205,23 @@ class OpeningStockLineInput(_Payload):
 class OpeningStockPayload(_Payload):
     effective_at: datetime
     lines: list[OpeningStockLineInput] = Field(min_length=1)
+    memo: str | None = Field(default=None, max_length=2_000)
+
+    _normalise_effective_at = field_validator("effective_at")(_aware_utc)
+
+
+class StockAdjustmentLineInput(_Payload):
+    product_id: uuid.UUID
+    quantity: Decimal = Field(gt=0, max_digits=19, decimal_places=4)
+    unit_cost: Decimal = Field(ge=0, max_digits=19, decimal_places=4)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class StockAdjustmentPayload(_Payload):
+    direction: Literal["in", "out"]
+    effective_at: datetime
+    lines: list[StockAdjustmentLineInput] = Field(min_length=1)
+    reason: str = Field(min_length=1, max_length=500)
     memo: str | None = Field(default=None, max_length=2_000)
 
     _normalise_effective_at = field_validator("effective_at")(_aware_utc)
@@ -956,6 +974,19 @@ async def post_proposal(
             source_id=proposal_id,
             declared_amount=amount,
             requested_by=requested_by,
+            role=role,
+        )
+    if kind == "stock_adjustment":
+        return await post_stock_adjustment(
+            session,
+            org_id=org_id,
+            payload=payload,
+            idempotency_key=proposal_id,
+            source_type="proposal",
+            source_id=proposal_id,
+            declared_amount=amount,
+            requested_by=requested_by,
+            role=role,
         )
 
     raise PostingValidationError(
@@ -2041,6 +2072,127 @@ async def post_opening_stock(
                     "source": source_id,
                     "occurred": opening.effective_at,
                     "note": line.description or "Opening stock",
+                },
+            )
+            movement_ids.append(movement_id)
+
+        return PostingResult(
+            journal_entry_id=entry_id,
+            stock_movement_ids=tuple(movement_ids),
+        )
+
+    return await _run(
+        session,
+        org_id=org_id,
+        idempotency_key=idempotency_key,
+        operation=operation,
+        user_id=requested_by,
+        role=role,
+    )
+
+
+# ── Stock adjustments ────────────────────────────────────────
+
+
+async def post_stock_adjustment(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    payload: dict | None,
+    idempotency_key: uuid.UUID,
+    source_type: str = "stock_adjustment",
+    source_id: uuid.UUID | None = None,
+    declared_amount: Decimal | str | None = None,
+    requested_by: uuid.UUID | None = None,
+    role: str | None = None,
+) -> PostingResult:
+    adjustment = _parse(StockAdjustmentPayload, payload, "stock adjustment")
+    source_id = source_id or idempotency_key
+    movement_type = (
+        "adjustment_in" if adjustment.direction == "in" else "adjustment_out"
+    )
+    quantity_sign = Decimal("1") if adjustment.direction == "in" else Decimal("-1")
+
+    async def operation() -> PostingResult:
+        await ensure_default_chart(session, org_id)
+        await _require_products(session, org_id, adjustment.lines)
+        total_cost = _quantize(
+            sum(
+                (line.quantity * line.unit_cost for line in adjustment.lines),
+                Decimal("0"),
+            )
+        )
+        if total_cost <= 0:
+            raise PostingValidationError(
+                "A stock adjustment must have a positive cost value",
+                code="invalid_stock_adjustment",
+            )
+        _assert_declared_amount(
+            total_cost, declared_amount, label="stock adjustment"
+        )
+
+        accounts = await _require_accounts(
+            session, org_id, [INVENTORY, INVENTORY_VARIANCE]
+        )
+        inventory_line = _line(
+            accounts[INVENTORY].id,
+            debit=total_cost if adjustment.direction == "in" else Decimal("0"),
+            credit=total_cost if adjustment.direction == "out" else Decimal("0"),
+            description=adjustment.reason,
+        )
+        variance_line = _line(
+            accounts[INVENTORY_VARIANCE].id,
+            debit=total_cost if adjustment.direction == "out" else Decimal("0"),
+            credit=total_cost if adjustment.direction == "in" else Decimal("0"),
+            description=adjustment.reason,
+        )
+        entry_id = await session.scalar(
+            text(
+                """
+                SELECT ledger.post_journal_entry(
+                    CAST(:org AS uuid), :source_type, CAST(:source AS uuid),
+                    CAST(:key AS uuid), CAST(:effective AS timestamptz),
+                    :memo, CAST(:lines AS jsonb), CAST(:requested_by AS uuid)
+                )
+                """
+            ),
+            {
+                "org": org_id,
+                "source_type": source_type,
+                "source": source_id,
+                "key": idempotency_key,
+                "effective": adjustment.effective_at,
+                "memo": adjustment.memo or adjustment.reason,
+                "lines": _json([inventory_line, variance_line]),
+                "requested_by": requested_by,
+            },
+        )
+
+        movement_ids: list[uuid.UUID] = []
+        for line in adjustment.lines:
+            movement_id = await session.scalar(
+                text(
+                    """
+                    SELECT ledger.post_stock_movement(
+                        CAST(:org AS uuid), CAST(:product AS uuid), CAST(:entry AS uuid),
+                        CAST(:kind AS ledger.stock_movement_type),
+                        CAST(:quantity AS numeric), CAST(:cost AS numeric),
+                        :source_type, CAST(:source AS uuid),
+                        CAST(:occurred AS timestamptz), :note
+                    )
+                    """
+                ),
+                {
+                    "org": org_id,
+                    "product": line.product_id,
+                    "entry": entry_id,
+                    "kind": movement_type,
+                    "quantity": _quantize(quantity_sign * line.quantity),
+                    "cost": _quantize(line.unit_cost),
+                    "source_type": source_type,
+                    "source": source_id,
+                    "occurred": adjustment.effective_at,
+                    "note": line.description or adjustment.reason,
                 },
             )
             movement_ids.append(movement_id)

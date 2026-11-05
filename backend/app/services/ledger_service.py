@@ -71,6 +71,23 @@ class StockLevel:
 
 
 @dataclass(frozen=True)
+class StockMovement:
+    id: uuid.UUID
+    product_id: uuid.UUID
+    sku: str
+    name: str
+    movement_type: str
+    quantity_delta: Decimal
+    unit_cost: Decimal
+    source_type: str
+    source_id: uuid.UUID
+    journal_entry_id: uuid.UUID
+    occurred_at: datetime
+    note: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class JournalEntry:
     id: uuid.UUID
     entry_number: int
@@ -486,6 +503,35 @@ async def stock_quantity(
     return Decimal(value or 0)
 
 
+_STOCK_LEVELS_FROM = """
+    FROM (
+        SELECT p.id AS product_id, p.sku, p.name, p.is_active,
+               coalesce(sm.quantity_on_hand, 0) AS quantity_on_hand,
+               p.reorder_point,
+               coalesce(sm.quantity_on_hand, 0) <= p.reorder_point AS needs_reorder
+        FROM ledger.products p
+        LEFT JOIN (
+            SELECT product_id, sum(quantity_delta) AS quantity_on_hand
+            FROM ledger.stock_movements
+            WHERE org_id = :org
+            GROUP BY product_id
+        ) sm ON sm.product_id = p.id
+        WHERE p.org_id = :org
+    ) levels
+"""
+
+
+def _stock_level_from_row(row) -> StockLevel:
+    return StockLevel(
+        product_id=row.product_id,
+        sku=row.sku,
+        name=row.name,
+        quantity_on_hand=Decimal(row.quantity_on_hand),
+        reorder_point=Decimal(row.reorder_point),
+        needs_reorder=bool(row.needs_reorder),
+    )
+
+
 async def list_stock_levels(
     session: AsyncSession,
     org_id: uuid.UUID,
@@ -514,28 +560,139 @@ async def list_stock_levels(
     ]
 
 
+async def list_stock_levels_page(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    include_inactive: bool = False,
+    only_needs_reorder: bool = False,
+    search: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[StockLevel], int]:
+    where = ["1 = 1"]
+    params: dict = {"org": org_id}
+    if not include_inactive:
+        where.append("levels.is_active")
+    if only_needs_reorder:
+        where.append("levels.needs_reorder")
+    if search and search.strip():
+        where.append("(levels.sku ILIKE :q OR levels.name ILIKE :q)")
+        params["q"] = f"%{search.strip()}%"
+    clause = " AND ".join(where)
+
+    total = await session.scalar(
+        text(f"SELECT count(*) {_STOCK_LEVELS_FROM} WHERE {clause}"), params
+    )
+    rows = (
+        await session.execute(
+            text(
+                f"""
+                SELECT levels.product_id, levels.sku, levels.name,
+                       levels.quantity_on_hand, levels.reorder_point,
+                       levels.needs_reorder
+                {_STOCK_LEVELS_FROM}
+                WHERE {clause}
+                ORDER BY levels.sku
+                LIMIT :limit OFFSET :offset
+                """
+            ),
+            {**params, "limit": limit, "offset": offset},
+        )
+    ).all()
+    return [_stock_level_from_row(row) for row in rows], int(total or 0)
+
+
 async def get_stock_level(
     session: AsyncSession, org_id: uuid.UUID, product_id: uuid.UUID
 ) -> StockLevel | None:
     row = (
         await session.execute(
             text(
-                "SELECT product_id, sku, name, quantity_on_hand, reorder_point, "
-                "needs_reorder FROM ledger.v_inventory_on_hand "
-                "WHERE org_id = :org AND product_id = CAST(:id AS uuid)"
+                f"""
+                SELECT levels.product_id, levels.sku, levels.name,
+                       levels.quantity_on_hand, levels.reorder_point,
+                       levels.needs_reorder
+                {_STOCK_LEVELS_FROM}
+                WHERE levels.product_id = CAST(:id AS uuid)
+                """
             ),
             {"org": org_id, "id": product_id},
         )
     ).one_or_none()
-    if row is None:
-        return None
-    return StockLevel(
-        product_id=row.product_id,
-        sku=row.sku,
-        name=row.name,
-        quantity_on_hand=Decimal(row.quantity_on_hand),
-        reorder_point=Decimal(row.reorder_point),
-        needs_reorder=bool(row.needs_reorder),
+    return _stock_level_from_row(row) if row else None
+
+
+async def list_stock_movements(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    product_id: uuid.UUID | None = None,
+    movement_type: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[StockMovement], int]:
+    where = ["sm.org_id = :org"]
+    params: dict = {"org": org_id}
+    if product_id is not None:
+        where.append("sm.product_id = CAST(:product AS uuid)")
+        params["product"] = product_id
+    if movement_type:
+        where.append("sm.movement_type = CAST(:kind AS ledger.stock_movement_type)")
+        params["kind"] = movement_type
+    if since is not None:
+        where.append("sm.occurred_at >= CAST(:since AS timestamptz)")
+        params["since"] = since
+    if until is not None:
+        where.append("sm.occurred_at < CAST(:until AS timestamptz)")
+        params["until"] = until
+    clause = " AND ".join(where)
+
+    total = await session.scalar(
+        text(f"SELECT count(*) FROM ledger.stock_movements sm WHERE {clause}"),
+        params,
+    )
+    rows = (
+        await session.execute(
+            text(
+                f"""
+                SELECT sm.id, sm.product_id, p.sku, p.name, sm.movement_type,
+                       sm.quantity_delta, sm.unit_cost, sm.source_type,
+                       sm.source_id, sm.journal_entry_id, sm.occurred_at,
+                       sm.note, sm.created_at
+                FROM ledger.stock_movements sm
+                JOIN ledger.products p
+                  ON p.id = sm.product_id AND p.org_id = sm.org_id
+                WHERE {clause}
+                ORDER BY sm.occurred_at DESC, sm.created_at DESC, sm.id DESC
+                LIMIT :limit OFFSET :offset
+                """
+            ),
+            {**params, "limit": limit, "offset": offset},
+        )
+    ).all()
+    return (
+        [
+            StockMovement(
+                id=row.id,
+                product_id=row.product_id,
+                sku=row.sku,
+                name=row.name,
+                movement_type=row.movement_type,
+                quantity_delta=Decimal(row.quantity_delta),
+                unit_cost=Decimal(row.unit_cost),
+                source_type=row.source_type,
+                source_id=row.source_id,
+                journal_entry_id=row.journal_entry_id,
+                occurred_at=row.occurred_at,
+                note=row.note,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ],
+        int(total or 0),
     )
 
 

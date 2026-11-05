@@ -15,6 +15,8 @@ from app.api import (
     dashboard,
     debts,
     expenses,
+    inventory,
+    products,
     proposals,
     staff,
     suppliers,
@@ -102,6 +104,8 @@ def create_app() -> FastAPI:
     api.include_router(expenses.router)
     api.include_router(debts.router)
     api.include_router(suppliers.router)
+    api.include_router(products.router)
+    api.include_router(inventory.router)
     api.include_router(dashboard.router)
     api.include_router(staff.router)
     app.include_router(api)
