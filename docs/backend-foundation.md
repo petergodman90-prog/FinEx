@@ -1,6 +1,6 @@
-# Backend Foundation (Layers 1–7)
+# Backend Foundation (Layers 1–8)
 
-Status: complete and tested (114 tests green). Deferred by design: AI assistant
+Status: complete and tested (122 tests green). Deferred by design: AI assistant
 NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics,
 and email invitations for people who do not yet have a FinEx account.
 
@@ -79,7 +79,26 @@ and email invitations for people who do not yet have a FinEx account.
 - `app/models/audit_log.py` is append-only via a statement trigger; writes go
   through `app/services/audit_service.py`.
 
-### 6. Migration, roles, tests
+### 6. Expenses, suppliers & debts
+- `app/api/expenses.py`, `app/api/suppliers.py`, `app/api/debts.py` expose the
+  expenses, supplier reference, debt aging, and settlement surface.
+- `POST /api/v1/expenses` stages an `expense` proposal; approving it posts
+  through `posting_service.post_expense`. The response flattens the proposal
+  payload into `ExpenseOut`, including the resolved expense account, payment
+  method, supplier, due date, journal-entry id, and posting error.
+- `GET/POST /api/v1/suppliers` manage the minimal payable counterparty. There
+  is no contact PII in the ledger supplier record.
+- `GET /api/v1/debts`, `/debts/summary`, `/debts/aging`, `/{id}`, and
+  `/{id}/settlements` read `ledger.v_open_item_balances` with counterparty names
+  resolved from customers or suppliers.
+- `POST /api/v1/debts/{id}/settlements` stages a `settlement` proposal. The
+  posting service validates the outstanding balance again at approval, then
+  calls `settle_open_item`; partial settlements are supported.
+- New RBAC permissions: `expenses:read/write`, `suppliers:read/write`, and
+  `debts:read/write`. All roles may read; staff and above may write. Approval
+  still requires `proposals:approve` (manager and above).
+
+### 7. Migration, roles, tests
 - `backend/migrations/versions/001_initial_schema.py`: all tables, RLS
   (`ENABLE` + `FORCE` + policies generated from `rls.py`), the append-only
   audit trigger, `CREATE ROLE finex_app` (NOSUPERUSER, NOBYPASSRLS, NOLOGIN)
@@ -93,15 +112,15 @@ and email invitations for people who do not yet have a FinEx account.
   memberships policy into read-own/read-org SELECT plus owner/admin-only
   INSERT/UPDATE/DELETE, blocking staff self-promotion.
 - `alembic check` is clean (models ↔ migration zero drift).
-- `backend/tests` (114 tests): auth flows, refresh rotation/revocation,
+- `backend/tests` (122 tests): auth flows, refresh rotation/revocation,
   customers CRUD/dedup/merge/permissions, proposal idempotency/caps/expiry,
-  dashboard metrics, RBAC matrix, staff lifecycle/invitations, crypto
-  (encrypt/blind index), RLS enabled+forced and cross-tenant isolation —
-  including behavioral checks that run as `SET ROLE finex_app`, ledger
-  posting/receipt isolation, safe views, cross-tenant posting rejection, and
-  posting idempotency.
+  dashboard metrics, expenses/suppliers/debts/settlements, RBAC matrix, staff
+  lifecycle/invitations, crypto (encrypt/blind index), RLS enabled+forced and
+  cross-tenant isolation — including behavioral checks that run as
+  `SET ROLE finex_app`, ledger posting/receipt isolation, safe views,
+  cross-tenant posting rejection, and posting idempotency.
 
-### 7. Staff & membership
+### 8. Staff & membership
 - `backend/migrations/versions/006_staff_membership.py` adds membership
   lifecycle status (`active`, `pending`, `suspended`), display-only job
   titles, department and manager links, plus tenant-scoped `departments` and

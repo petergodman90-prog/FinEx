@@ -169,6 +169,27 @@ result.allocation_id
 result.receipt_id
 ```
 
+`POST /api/v1/debts/{id}/settlements` stages the same operation as a
+`settlement` proposal. Its payload is:
+
+```json
+{
+  "open_item_id": "9f1b0d7a-3c42-4e58-9b6a-2d7c1e4f5a60",
+  "amount": "15.00",
+  "currency": "NGN",
+  "effective_at": "2026-10-22T12:00:00+01:00",
+  "cash_account_code": "1000",
+  "issue_receipt": false,
+  "notes": "Part payment"
+}
+```
+
+On approval, `post_proposal` dispatches `settlement` to `post_settlement`, which
+validates the declared amount/currency and delegates to `settle_open_item` with
+the proposal id as the idempotency key. The HTTP API also rejects a staged
+amount above the current outstanding balance before creating the proposal; the
+posting service checks it again at approval to close the race.
+
 Settlement rules:
 
 - `amount` must be positive and may not exceed the outstanding balance. Partial

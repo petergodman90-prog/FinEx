@@ -24,6 +24,11 @@ def test_permission_matrix() -> None:
     assert not check_permission("manager", "proposals:expire")
     assert check_permission("admin", "proposals:expire")
 
+    for resource in ("expenses", "suppliers", "debts"):
+        assert check_permission("viewer", f"{resource}:read")
+        assert not check_permission("viewer", f"{resource}:write")
+        assert check_permission("staff", f"{resource}:write")
+
 
 def test_unknown_role_or_permission_denied() -> None:
     assert not check_permission("intern", "customers:read")

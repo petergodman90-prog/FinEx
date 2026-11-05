@@ -187,6 +187,30 @@ class OpenItem:
     due_on: date | None
     opened_at: datetime
     aging_bucket: str
+    counterparty_name: str | None = None
+
+
+@dataclass(frozen=True)
+class Settlement:
+    id: uuid.UUID
+    open_item_id: uuid.UUID
+    journal_entry_id: uuid.UUID
+    amount: Decimal
+    allocated_at: datetime
+    reversal_of_id: uuid.UUID | None = None
+    is_reversed: bool = False
+
+
+@dataclass(frozen=True)
+class DebtSummary:
+    total_receivables: Decimal
+    total_payables: Decimal
+    total_outstanding: Decimal
+    total_debtors: int
+    total_creditors: int
+    overdue_receivables: Decimal
+    overdue_payables: Decimal
+    overdue_count: int
 
 
 @dataclass(frozen=True)
@@ -971,6 +995,95 @@ async def list_open_items(
     ]
 
 
+async def list_open_items_page(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    item_type: str | None = None,
+    outstanding_only: bool = True,
+    overdue_only: bool = False,
+    counterparty_id: uuid.UUID | None = None,
+    aging_bucket: str | None = None,
+    q: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[OpenItem], int]:
+    base_from = """
+        FROM ledger.v_open_item_balances v
+        LEFT JOIN ledger.suppliers s
+          ON s.org_id = v.org_id AND s.id = v.counterparty_id
+         AND v.item_type = 'supplier_payable'
+        LEFT JOIN public.customers c
+          ON c.org_id = v.org_id AND c.id = v.counterparty_id
+         AND v.item_type = 'customer_receivable'
+    """
+    where = ["v.org_id = :org"]
+    params: dict = {"org": org_id}
+    if item_type:
+        where.append("v.item_type = CAST(:kind AS ledger.open_item_type)")
+        params["kind"] = item_type
+    if outstanding_only:
+        where.append("v.outstanding_amount <> 0")
+    if overdue_only:
+        where.append(
+            "v.due_on IS NOT NULL AND v.due_on < current_date "
+            "AND v.outstanding_amount <> 0"
+        )
+    if counterparty_id is not None:
+        where.append("v.counterparty_id = CAST(:cp AS uuid)")
+        params["cp"] = counterparty_id
+    if aging_bucket:
+        where.append("v.aging_bucket = :bucket")
+        params["bucket"] = aging_bucket
+    if q and q.strip():
+        where.append("(s.name ILIKE :q OR c.name ILIKE :q)")
+        params["q"] = f"%{q.strip()}%"
+    clause = " AND ".join(where)
+
+    total = await session.scalar(
+        text(f"SELECT count(*) {base_from} WHERE {clause}"), params
+    )
+    rows = (
+        await session.execute(
+            text(
+                f"""
+                SELECT v.open_item_id, v.item_type, v.counterparty_id,
+                       v.original_amount, v.allocated_amount,
+                       v.outstanding_amount, v.due_on, v.opened_at,
+                       v.aging_bucket,
+                       CASE
+                           WHEN v.item_type = 'supplier_payable' THEN s.name
+                           ELSE c.name
+                       END AS counterparty_name
+                {base_from}
+                WHERE {clause}
+                ORDER BY v.due_on NULLS LAST, v.opened_at, v.open_item_id
+                LIMIT :limit OFFSET :offset
+                """
+            ),
+            {**params, "limit": limit, "offset": offset},
+        )
+    ).all()
+    return (
+        [
+            OpenItem(
+                id=r.open_item_id,
+                item_type=r.item_type,
+                counterparty_id=r.counterparty_id,
+                original_amount=Decimal(r.original_amount),
+                allocated_amount=Decimal(r.allocated_amount),
+                outstanding_amount=Decimal(r.outstanding_amount),
+                due_on=r.due_on,
+                opened_at=r.opened_at,
+                aging_bucket=r.aging_bucket,
+                counterparty_name=r.counterparty_name,
+            )
+            for r in rows
+        ],
+        int(total or 0),
+    )
+
+
 async def get_open_item(
     session: AsyncSession, org_id: uuid.UUID, open_item_id: uuid.UUID
 ) -> OpenItem | None:
@@ -978,11 +1091,22 @@ async def get_open_item(
         await session.execute(
             text(
                 """
-                SELECT open_item_id, item_type, counterparty_id, original_amount,
-                       allocated_amount, outstanding_amount, due_on, opened_at,
-                       aging_bucket
-                FROM ledger.v_open_item_balances
-                WHERE org_id = :org AND open_item_id = CAST(:id AS uuid)
+                SELECT v.open_item_id, v.item_type, v.counterparty_id,
+                       v.original_amount, v.allocated_amount,
+                       v.outstanding_amount, v.due_on, v.opened_at,
+                       v.aging_bucket,
+                       CASE
+                           WHEN v.item_type = 'supplier_payable' THEN s.name
+                           ELSE c.name
+                       END AS counterparty_name
+                FROM ledger.v_open_item_balances v
+                LEFT JOIN ledger.suppliers s
+                  ON s.org_id = v.org_id AND s.id = v.counterparty_id
+                 AND v.item_type = 'supplier_payable'
+                LEFT JOIN public.customers c
+                  ON c.org_id = v.org_id AND c.id = v.counterparty_id
+                 AND v.item_type = 'customer_receivable'
+                WHERE v.org_id = :org AND v.open_item_id = CAST(:id AS uuid)
                 """
             ),
             {"org": org_id, "id": open_item_id},
@@ -1000,6 +1124,112 @@ async def get_open_item(
         due_on=row.due_on,
         opened_at=row.opened_at,
         aging_bucket=row.aging_bucket,
+        counterparty_name=row.counterparty_name,
+    )
+
+
+async def debt_summary(
+    session: AsyncSession, org_id: uuid.UUID
+) -> DebtSummary:
+    rows = (
+        await session.execute(
+            text(
+                """
+                SELECT item_type,
+                       count(*) AS item_count,
+                       coalesce(sum(outstanding_amount), 0) AS outstanding,
+                       coalesce(sum(
+                           CASE
+                               WHEN due_on IS NOT NULL AND due_on < current_date
+                               THEN outstanding_amount
+                               ELSE 0
+                           END
+                       ), 0) AS overdue,
+                       count(*) FILTER (
+                           WHERE due_on IS NOT NULL AND due_on < current_date
+                       ) AS overdue_count,
+                       count(DISTINCT counterparty_id) AS counterparties
+                FROM ledger.v_open_item_balances
+                WHERE org_id = :org AND outstanding_amount <> 0
+                GROUP BY item_type
+                """
+            ),
+            {"org": org_id},
+        )
+    ).all()
+    by_type = {row.item_type: row for row in rows}
+    receivables = by_type.get("customer_receivable")
+    payables = by_type.get("supplier_payable")
+    total_receivables = (
+        Decimal(receivables.outstanding) if receivables else ZERO
+    )
+    total_payables = Decimal(payables.outstanding) if payables else ZERO
+    overdue_receivables = Decimal(receivables.overdue) if receivables else ZERO
+    overdue_payables = Decimal(payables.overdue) if payables else ZERO
+    return DebtSummary(
+        total_receivables=total_receivables,
+        total_payables=total_payables,
+        total_outstanding=total_receivables + total_payables,
+        total_debtors=int(receivables.counterparties) if receivables else 0,
+        total_creditors=int(payables.counterparties) if payables else 0,
+        overdue_receivables=overdue_receivables,
+        overdue_payables=overdue_payables,
+        overdue_count=sum(int(row.overdue_count) for row in rows),
+    )
+
+
+async def list_settlements(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    open_item_id: uuid.UUID,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[Settlement], int]:
+    params = {"org": org_id, "item": open_item_id}
+    total = await session.scalar(
+        text(
+            "SELECT count(*) FROM ledger.payment_allocations "
+            "WHERE org_id = :org AND open_item_id = CAST(:item AS uuid)"
+        ),
+        params,
+    )
+    rows = (
+        await session.execute(
+            text(
+                """
+                SELECT pa.id, pa.open_item_id, pa.payment_journal_entry_id,
+                       pa.amount, pa.allocated_at, pa.reversal_of_id,
+                       EXISTS (
+                           SELECT 1
+                           FROM ledger.payment_allocations rev
+                           WHERE rev.org_id = pa.org_id
+                             AND rev.reversal_of_id = pa.id
+                       ) AS is_reversed
+                FROM ledger.payment_allocations pa
+                WHERE pa.org_id = :org
+                  AND pa.open_item_id = CAST(:item AS uuid)
+                ORDER BY pa.allocated_at DESC, pa.id
+                LIMIT :limit OFFSET :offset
+                """
+            ),
+            {**params, "limit": limit, "offset": offset},
+        )
+    ).all()
+    return (
+        [
+            Settlement(
+                id=row.id,
+                open_item_id=row.open_item_id,
+                journal_entry_id=row.payment_journal_entry_id,
+                amount=Decimal(row.amount),
+                allocated_at=row.allocated_at,
+                reversal_of_id=row.reversal_of_id,
+                is_reversed=bool(row.is_reversed),
+            )
+            for row in rows
+        ],
+        int(total or 0),
     )
 
 

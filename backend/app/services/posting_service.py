@@ -177,6 +177,23 @@ class ExpensePayload(_Payload):
     _normalise_effective_at = field_validator("effective_at")(_aware_utc)
 
 
+class SettlementPayload(_Payload):
+    open_item_id: uuid.UUID
+    amount: Decimal = Field(gt=0, max_digits=19, decimal_places=4)
+    currency: str | None = Field(
+        default=None, min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$"
+    )
+    effective_at: datetime
+    cash_account_code: str = CASH
+    issue_receipt: bool = False
+    notes: str | None = Field(default=None, max_length=2_000)
+
+    _normalise_currency = field_validator("currency", mode="before")(
+        lambda value: _upper_currency(value) if value is not None else None
+    )
+    _normalise_effective_at = field_validator("effective_at")(_aware_utc)
+
+
 class OpeningStockLineInput(_Payload):
     product_id: uuid.UUID
     quantity: Decimal = Field(gt=0, max_digits=19, decimal_places=4)
@@ -918,6 +935,17 @@ async def post_proposal(
             requested_by=requested_by,
             role=role,
         )
+    if kind == "settlement":
+        return await post_settlement(
+            session,
+            org_id=org_id,
+            proposal_id=proposal_id,
+            payload=payload,
+            declared_amount=amount,
+            declared_currency=currency,
+            requested_by=requested_by,
+            role=role,
+        )
     if kind == "opening_stock":
         return await post_opening_stock(
             session,
@@ -1572,6 +1600,46 @@ async def post_expense(
 
 
 # ── Settlements ──────────────────────────────────────────────
+
+
+async def post_settlement(
+    session: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    proposal_id: uuid.UUID,
+    payload: dict | None,
+    declared_amount: Decimal | str | None = None,
+    declared_currency: str | None = None,
+    requested_by: uuid.UUID | None = None,
+    role: str | None = None,
+) -> PostingResult:
+    settlement = _parse(SettlementPayload, payload, "settlement")
+    _assert_declared_amount(
+        settlement.amount, declared_amount, label="settlement"
+    )
+    if declared_currency is not None:
+        if settlement.currency is None:
+            raise PostingValidationError(
+                "The proposal currency does not match the posting payload",
+                code="currency_mismatch",
+                details={"payload": None, "declared": declared_currency},
+            )
+        _assert_declared_currency(settlement.currency, declared_currency)
+    return await settle_open_item(
+        session,
+        org_id=org_id,
+        open_item_id=settlement.open_item_id,
+        amount=settlement.amount,
+        effective_at=settlement.effective_at,
+        idempotency_key=proposal_id,
+        cash_account_code=settlement.cash_account_code,
+        currency=settlement.currency,
+        issue_receipt=settlement.issue_receipt,
+        notes=settlement.notes,
+        source_id=proposal_id,
+        requested_by=requested_by,
+        role=role,
+    )
 
 
 async def settle_open_item(
