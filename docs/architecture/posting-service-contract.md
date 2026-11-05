@@ -314,9 +314,11 @@ result.journal_entry_id
 ```
 
 The service never commits. Person B's request transaction owns the commit. On
-success, store `result.journal_entry_id` on the proposal and set it to
-`applied`/posted. On failure, catch `PostingError`, keep the proposal approved,
-store `error.code`, `str(error)` and `error.retryable`, and expose retry.
+success, store `result.journal_entry_id` on the proposal, set `posted_at` to the
+approval-to-posting completion time, clear `posting_error`, and set the proposal
+to `applied`/posted. On failure, catch `PostingError`, keep the proposal
+approved, store `error.code`, `str(error)` and `error.retryable`, and expose
+retry.
 
 ## Approval-to-posting behaviour (MVP)
 
@@ -324,14 +326,57 @@ Posting is synchronous:
 
 1. approval succeeds and the proposal is `approved`;
 2. posting is attempted immediately in the same request;
-3. success records the journal-entry id and moves the proposal to `applied`;
-4. failure leaves the proposal `approved` with a posting error and a retry
-   action.
+3. success records the journal-entry id and `posted_at`, clears any previous
+   posting error, and moves the proposal to `applied`;
+4. failure leaves the proposal `approved` with a structured posting error and a
+   retry action.
 
 A retry is safe and idempotent; it either returns the original journal entry or
 performs the posting exactly once. The UI must only show **Posted** when a
 journal-entry id is present. Until then it shows **Approved — posting pending**
 or **Posting failed — retry**.
+
+### HTTP contract
+
+| Request | Permission | Result |
+| --- | --- | --- |
+| `POST /api/v1/proposals/{id}/approve` | `proposals:approve` | Approve and attempt posting immediately |
+| `POST /api/v1/proposals/{id}/retry-posting` | `proposals:approve` | Retry posting; replay an already-applied proposal |
+| `POST /api/v1/proposals/{id}/post` | `proposals:approve` | Hidden compatibility alias for `retry-posting` |
+
+The proposal response always includes `status`, `journal_entry_id`,
+`posted_at`, and `posting_error`:
+
+- success: HTTP 200, `status=applied`, non-null `journal_entry_id` and
+  `posted_at`, `posting_error=null`;
+- retryable failure: HTTP 200, `status=approved`, null `journal_entry_id` and
+  `posted_at`, `posting_error={code, message, retryable: true, details}`;
+- non-retryable failure: the same shape with `retryable: false`; retrying does
+  not write financial records or report the proposal as posted;
+- invalid state (pending/rejected/expired/manual): HTTP 409;
+- missing permission: HTTP 403; another organisation's proposal: HTTP 404.
+
+`posted_at` is the application-side completion timestamp. The ledger's
+`posting_events.posted_at` remains the authoritative financial posting time.
+
+### Statuses and queue filters
+
+Proposal statuses are `pending`, `approved`, `rejected`, `expired`, and
+`applied`. `applied` means the ledger entry exists; `approved` means the
+decision exists but posting has not succeeded (possibly with `posting_error`).
+
+The list endpoint's `status` filter is exact and single-valued. An **Approved**
+queue view must therefore include both `approved` and `applied` (for example by
+querying both statuses or extending the filter to accept a comma-separated
+list). It must not hide posted proposals behind the `approved` label alone.
+
+### Audit events
+
+Approval writes `proposal.approved`. A posting failure writes
+`proposal.posting_failed` with the structured error. A successful posting writes
+`proposal.applied` with the journal-entry id and whether the result was a
+replay. The proposal's `after_state` includes `journal_entry_id`, `posted_at`,
+and `posting_error`.
 
 ## Failure codes
 

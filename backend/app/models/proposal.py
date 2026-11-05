@@ -82,6 +82,9 @@ class Proposal(Base, OrgScopedMixin, TimestampMixin, SoftDeleteMixin):
     journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), nullable=True
     )
+    posted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Last posting failure: {code, message, retryable, details}, cleared on
     # success. A failed approval stays ``approved`` so it can be retried.
     posting_error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

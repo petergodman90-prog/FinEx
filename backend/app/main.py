@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import auth, customers, dashboard, proposals
+from app.api import auth, customers, dashboard, proposals, staff
 from app.core.config import get_settings
 from app.core.db import assert_runtime_role_is_restricted, engine
 from app.core.logging_filter import install_pii_filter
@@ -52,8 +52,15 @@ def create_app() -> FastAPI:
         response.headers.setdefault(
             "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
         )
-        if request.url.path.startswith("/api/"):
+        response_path = request.url.path
+        if response_path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
+        elif response_path == "/" or response_path.endswith(".html"):
+            # The UI is not content-hashed. Revalidate the shell on every visit
+            # so a deploy cannot leave an old dashboard open in a browser tab.
+            response.headers.setdefault("Cache-Control", "no-store")
+        elif response_path.endswith((".js", ".css")):
+            response.headers.setdefault("Cache-Control", "no-cache")
         return response
 
     # Cross-origin access is opt-in and never a wildcard: production serves the
@@ -84,6 +91,7 @@ def create_app() -> FastAPI:
     api.include_router(customers.router)
     api.include_router(proposals.router)
     api.include_router(dashboard.router)
+    api.include_router(staff.router)
     app.include_router(api)
 
     @app.get("/health")

@@ -30,6 +30,7 @@ class TokenPayload(BaseModel):
     org_id: uuid.UUID  # active_org_id
     role: str  # role in active org
     jti: str  # unique token ID for revocation
+    iat: datetime  # issued-at; used by the per-user kill-switch
     exp: datetime
 
 
@@ -39,6 +40,7 @@ class RefreshPayload(BaseModel):
     sub: str
     jti: str
     token_type: str
+    iat: datetime
     exp: datetime
 
 
@@ -114,9 +116,10 @@ def decode_access_token(token: str) -> Optional[TokenPayload]:
             org_id=uuid.UUID(data["org"]),
             role=data["role"],
             jti=data["jti"],
+            iat=data["iat"],
             exp=data["exp"],
         )
-    except (JWTError, KeyError, ValueError):
+    except (JWTError, KeyError, ValueError, TypeError):
         return None
 
 
@@ -135,7 +138,8 @@ def decode_refresh_token(token: str) -> Optional[RefreshPayload]:
             sub=data["sub"],
             jti=data["jti"],
             token_type=data["type"],
+            iat=data["iat"],
             exp=data["exp"],
         )
-    except (JWTError, KeyError, ValueError):
+    except (JWTError, KeyError, ValueError, TypeError):
         return None

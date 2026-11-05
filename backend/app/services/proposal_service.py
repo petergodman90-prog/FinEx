@@ -75,6 +75,7 @@ def serialize_proposal(proposal: Proposal) -> ProposalOut:
         decided_at=proposal.decided_at,
         decision_note=proposal.decision_note,
         journal_entry_id=proposal.journal_entry_id,
+        posted_at=proposal.posted_at,
         posting_error=dict(proposal.posting_error)
         if proposal.posting_error is not None
         else None,
@@ -94,6 +95,9 @@ def _audit_snapshot(proposal: Proposal) -> dict:
         "expires_at": proposal.expires_at.isoformat(),
         "journal_entry_id": str(proposal.journal_entry_id)
         if proposal.journal_entry_id is not None
+        else None,
+        "posted_at": proposal.posted_at.isoformat()
+        if proposal.posted_at is not None
         else None,
         "posting_error": proposal.posting_error,
     }
@@ -117,15 +121,20 @@ async def _find_pending(
 
 
 async def get_proposal(
-    session: AsyncSession, actor: TokenPayload, proposal_id: uuid.UUID
+    session: AsyncSession,
+    actor: TokenPayload,
+    proposal_id: uuid.UUID,
+    *,
+    for_update: bool = False,
 ) -> Proposal:
-    proposal = await session.scalar(
-        select(Proposal).where(
-            Proposal.id == proposal_id,
-            Proposal.org_id == actor.org_id,
-            Proposal.deleted_at.is_(None),
-        )
+    stmt = select(Proposal).where(
+        Proposal.id == proposal_id,
+        Proposal.org_id == actor.org_id,
+        Proposal.deleted_at.is_(None),
     )
+    if for_update:
+        stmt = stmt.with_for_update()
+    proposal = await session.scalar(stmt)
     if proposal is None:
         raise NotFoundError("Proposal not found")
     return proposal
@@ -210,6 +219,7 @@ async def _attempt_posting(
         )
     except PostingError as exc:
         proposal.posting_error = exc.as_dict()
+        proposal.posted_at = None
         await session.flush()
         await session.refresh(proposal)
         await audit_service.record(
@@ -224,6 +234,7 @@ async def _attempt_posting(
 
     proposal.status = ProposalStatus.APPLIED.value
     proposal.journal_entry_id = result.journal_entry_id
+    proposal.posted_at = datetime.now(timezone.utc)
     proposal.posting_error = None
     await session.flush()
     await session.refresh(proposal)
@@ -249,7 +260,19 @@ async def _decide(
     approve: bool,
     note: str | None,
 ) -> Proposal:
-    proposal = await get_proposal(session, actor, proposal_id)
+    # Lock the row for the whole decision so two concurrent approvals cannot
+    # both observe "pending" and overwrite each other's decision/audit trail.
+    proposal = await session.scalar(
+        select(Proposal)
+        .where(
+            Proposal.id == proposal_id,
+            Proposal.org_id == actor.org_id,
+            Proposal.deleted_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if proposal is None:
+        raise NotFoundError("Proposal not found")
     if proposal.status != ProposalStatus.PENDING.value:
         raise ConflictError(
             f"Proposal is '{proposal.status}' and can no longer be decided"
@@ -258,18 +281,37 @@ async def _decide(
         raise ConflictError(
             "Proposal has expired and can no longer be decided"
         )
-    if approve and not check_spend_cap(actor.role, proposal.amount or Decimal("0")):
-        try:
-            cap = SPEND_CAPS[Role(actor.role)]
-        except (ValueError, KeyError):
-            cap = Decimal("0")
-        raise PermissionDeniedError(
-            "Amount exceeds your role's approval limit",
-            details={
-                "spend_cap": str(cap) if cap is not None else None,
-                "amount": str(proposal.amount) if proposal.amount is not None else None,
-            },
+
+    if approve:
+        # A missing amount must never be treated as zero: otherwise a capped
+        # approver could approve an arbitrarily large posting payload. Only an
+        # unlimited approver may decide an unquantified proposal.
+        approval_amount = (
+            proposal.amount
+            if proposal.amount is not None
+            else Decimal("Infinity")
         )
+        if not check_spend_cap(actor.role, approval_amount):
+            try:
+                cap = SPEND_CAPS[Role(actor.role)]
+            except (ValueError, KeyError):
+                cap = Decimal("0")
+            raise PermissionDeniedError(
+                (
+                    "Proposal amount is missing; only an unlimited approver can "
+                    "approve it"
+                    if proposal.amount is None
+                    else "Amount exceeds your role's approval limit"
+                ),
+                details={
+                    "spend_cap": str(cap) if cap is not None else None,
+                    "amount": (
+                        str(proposal.amount)
+                        if proposal.amount is not None
+                        else None
+                    ),
+                },
+            )
 
     proposal.status = (
         ProposalStatus.APPROVED.value if approve else ProposalStatus.REJECTED.value
@@ -319,7 +361,7 @@ async def post_approved_proposal(
     actor: TokenPayload,
 ) -> Proposal:
     """Retry posting for an approved proposal; applied proposals replay."""
-    proposal = await get_proposal(session, actor, proposal_id)
+    proposal = await get_proposal(session, actor, proposal_id, for_update=True)
     if _is_manual(proposal):
         raise ConflictError(
             "Manual proposals are informational and are never posted"

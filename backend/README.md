@@ -16,7 +16,7 @@ python -m venv .venv; .\.venv\Scripts\activate
 pip install -r requirements.txt -r requirements-dev.txt
 alembic upgrade head
 uvicorn app.main:app --reload        # http://127.0.0.1:8000/health
-pytest -q                            # 52 tests
+pytest -q                            # 120 tests
 ```
 
 Requires PostgreSQL (see `../docker-compose.yml`); Redis is faked in tests.

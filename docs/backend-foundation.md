@@ -1,7 +1,8 @@
-# Backend Foundation (Layers 1–6)
+# Backend Foundation (Layers 1–7)
 
-Status: complete and tested (63 tests green). Deferred by design: AI assistant
-NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
+Status: complete and tested (114 tests green). Deferred by design: AI assistant
+NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics,
+and email invitations for people who do not yet have a FinEx account.
 
 ## Layers
 
@@ -17,8 +18,10 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
   production serves the UI and API from one origin. With `SERVE_FRONTEND=true`
   the backend serves only `index.html` and the public `assets/`, `css/`, `js/`
   and `pages/` directories — never the repository root. Browser sessions use
-  `HttpOnly`, `SameSite=Lax` cookies (`app/core/cookies.py`); the JSON API also
-  keeps bearer-token support for non-browser clients.
+  `HttpOnly`, `SameSite=Lax` cookies (`app/core/cookies.py`); browser login,
+  register, refresh and switch-org responses contain no tokens. Non-browser
+  clients explicitly opt into bearer tokens via `/api/v1/auth/token` and
+  `/api/v1/auth/token/refresh`.
 - `app/core/rls.py` — single source of truth for tenancy: GUC names,
   `bind_session_context(session, org_id=..., user_id=...)` (binds via
   `set_config(..., is_local => true)`), the policy SQL shared by the migration
@@ -30,11 +33,20 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
 
 ### 2. Auth & sessions
 - `app/services/auth_service.py` + `app/api/auth.py`:
-  `/api/v1/auth/register | login | refresh | switch-org | logout | me`.
-- JWT access tokens (`app/core/auth.py`); refresh rotation with jti tracking;
-  session kill-switch (user-level revocation) via Redis
-  (`app/core/sessions.py`; tests use fakeredis). Password hashing in
+  `/api/v1/auth/register | login | refresh | switch-org | logout | me` for
+  browsers, plus explicit `/api/v1/auth/token | token/refresh | token/switch-org`
+  endpoints for non-browser API clients.
+- JWT access tokens (`app/core/auth.py`); refresh rotation is atomic via
+  Redis `SET NX` with jti tracking. Reusing a consumed refresh token revokes
+  the whole token family. Session kill-switch (user-level revocation) via
+  Redis (`app/core/sessions.py`; tests use fakeredis). Password hashing in
   `app/core/passwords.py`.
+- Login/register/refresh are rate limited per client IP (and login additionally
+  per account) through Redis (`app/core/rate_limit.py`). The limiter fails
+  closed if Redis is unavailable.
+- Production startup rejects weak/placeholder JWT secrets, missing or invalid
+  PII keys, wildcard CORS, and unsafe JWT algorithms
+  (`app/core/config.py`).
 - Register creates the organization + owner membership; login supports org
   selection; switch-org re-issues tokens bound to another membership.
 
@@ -52,13 +64,18 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
   org-scoped aggregation under RLS.
 
 ### 5. Proposals & audit
-- `Proposal` model (status pending/approved/rejected/expired, spend amount,
-  `idempotency_hash`); partial unique index on
+- `Proposal` model (status pending/approved/rejected/expired/applied, spend
+  amount, `idempotency_hash`, `journal_entry_id`, `posted_at`,
+  `posting_error`); partial unique index on
   `(org_id, idempotency_hash) WHERE status='pending'`; create is idempotent
   (savepoint + conflict lookup).
 - `app/services/proposal_service.py`: 24h expiry sweep
   (`POST /api/v1/proposals/expire`), role allow-list + per-role spend caps
-  (`app/core/rbac.py`), decisions written to the audit log.
+  (`app/core/rbac.py`), decisions written to the audit log. Approval posts
+  synchronously through the posting service; success is `applied` with a
+  journal-entry id and `posted_at`, failure stays `approved` with
+  `posting_error`. Retry is `POST /api/v1/proposals/{id}/retry-posting`
+  (`/post` remains a hidden alias).
 - `app/models/audit_log.py` is append-only via a statement trigger; writes go
   through `app/services/audit_service.py`.
 
@@ -72,13 +89,50 @@ NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics.
   (`receipt_lines` via its receipt), sets `security_invoker=true` on the read
   views, rejects posting rows that do not match the transaction's org context,
   and grants `finex_app` SELECT + posting-function EXECUTE only.
+- `backend/migrations/versions/005_membership_rls_hardening.py`: splits the
+  memberships policy into read-own/read-org SELECT plus owner/admin-only
+  INSERT/UPDATE/DELETE, blocking staff self-promotion.
 - `alembic check` is clean (models ↔ migration zero drift).
-- `backend/tests` (63 tests): auth flows, refresh rotation/revocation,
+- `backend/tests` (114 tests): auth flows, refresh rotation/revocation,
   customers CRUD/dedup/merge/permissions, proposal idempotency/caps/expiry,
-  dashboard metrics, RBAC matrix, crypto (encrypt/blind index), RLS
-  enabled+forced and cross-tenant isolation — including behavioral checks that
-  run as `SET ROLE finex_app`, ledger posting/receipt isolation, safe views,
-  cross-tenant posting rejection, and posting idempotency.
+  dashboard metrics, RBAC matrix, staff lifecycle/invitations, crypto
+  (encrypt/blind index), RLS enabled+forced and cross-tenant isolation —
+  including behavioral checks that run as `SET ROLE finex_app`, ledger
+  posting/receipt isolation, safe views, cross-tenant posting rejection, and
+  posting idempotency.
+
+### 7. Staff & membership
+- `backend/migrations/versions/006_staff_membership.py` adds membership
+  lifecycle status (`active`, `pending`, `suspended`), display-only job
+  titles, department and manager links, plus tenant-scoped `departments` and
+  `staff_roles` tables. All three tables are RLS-enabled and forced.
+- `app/services/staff_service.py` + `app/api/staff.py`:
+  - `GET /api/v1/staff` (manager-or-higher) returns the directory and summary
+    counts; `POST /api/v1/staff` invites an existing FinEx account.
+  - `PATCH /api/v1/staff/{membership_id}` updates access role, job title,
+    department, reporting line, or status; `DELETE` dismisses the member.
+  - `/api/v1/staff/departments` and `/api/v1/staff/roles` manage organization
+    metadata. Custom job-title roles are display-only and never grant RBAC
+    access.
+- Invitee endpoints: `GET /api/v1/auth/invitations`,
+  `POST /api/v1/auth/invitations/{membership_id}/accept`, and
+  `POST /api/v1/auth/invitations/{membership_id}/decline`. Pending rows grant
+  no workspace access until accepted. The invitee can only change the status
+  of their own pending row; a trigger blocks role/org/manager edits during
+  self-accept.
+- Authorization rules: reads require manager+; all mutations require
+  owner/admin. Admins cannot modify owners or other admins, and cannot grant a
+  role at or above their own. Owners can grant owner/admin. Nobody can change
+  their own role/status or dismiss themselves, and the last active owner cannot
+  be removed or demoted.
+- Suspension, dismissal, and access-role changes revoke all of that user's
+  sessions immediately (including sessions in other workspaces). Global user
+  name/email are never editable from one tenant's staff screen.
+- Managers must be active members of the same workspace; reporting-line cycles
+  are rejected. Department/role deletion requires reassigning staff first.
+- `pages/staff.html` + `js/staff.js` are now wired to these endpoints: live
+  directory, search/filter, invite, edit, suspend/restore, dismiss, department
+  and role management, organogram, and invitee accept/decline.
 
 ## Run / test
 
@@ -95,11 +149,17 @@ pytest -q                         # Postgres required; Redis is faked (fakeredis
 ## Security invariants (enforced, not aspirational)
 - Every tenant table has RLS enabled + forced with the org policy; the app
   role cannot bypass it (NOBYPASSRLS, plus behavioral `SET ROLE` tests).
+  Membership writes are further restricted to the active org's owner/admin;
+  admin writes cannot touch owner/admin rows. Staff self-accept can only
+  activate the invitee's own pending row, never change its role or links.
 - PII columns hold ciphertext; lookups go through the HMAC blind index.
 - No raw PII in logs (logging filter).
 - Soft delete only (`deleted_at`); queries and unique indexes honor it.
-- Sessions: refresh tokens rotate; logout/revocation kills sessions
-  server-side via Redis.
+- Sessions: refresh tokens rotate atomically; replay kills the token family;
+  logout/revocation kills sessions server-side via Redis. Browser responses
+  never expose bearer tokens.
+- Auth endpoints are Redis-rate-limited; production startup validates JWT and
+  PII key material.
 - Proposals: 24h expiry, idempotency hash, role allow-list, spend caps,
   immutable audit trail.
 - Ledger: every table RLS-enabled and forced; `receipt_lines` isolated through
@@ -141,4 +201,5 @@ clears the tide.
 - Configure automated encrypted backups with point-in-time recovery and test a
   restore before launch — see
   [runbooks/backup-and-restore.md](runbooks/backup-and-restore.md).
-- Rate limiting and audit retention policies per `docs/security-charter.md`.
+- Auth rate limiting is Redis-backed and fail-closed. Plan audit retention
+  policies per `docs/security-charter.md`.

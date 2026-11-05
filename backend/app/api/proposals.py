@@ -120,11 +120,17 @@ async def approve_proposal(
 
 
 @router.post(
-    "/{proposal_id}/post",
+    "/{proposal_id}/retry-posting",
     response_model=ProposalOut,
     dependencies=[Depends(require_permission("proposals:approve"))],
 )
-async def post_approved_proposal(
+@router.post(
+    "/{proposal_id}/post",
+    response_model=ProposalOut,
+    dependencies=[Depends(require_permission("proposals:approve"))],
+    include_in_schema=False,
+)
+async def retry_posting(
     proposal_id: uuid.UUID,
     user: TokenPayload = Depends(get_current_user),
     session: AsyncSession = Depends(get_rls_session),

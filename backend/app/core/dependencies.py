@@ -60,8 +60,9 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has been revoked",
         )
-    # Per-user emergency revocation (kill-switch)
-    if await is_user_revoked(payload.sub):
+    # Per-user emergency revocation (kill-switch). Tokens issued after the
+    # revocation event remain valid so the user can sign back in.
+    if await is_user_revoked(payload.sub, payload.iat):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="All sessions have been revoked for this user",

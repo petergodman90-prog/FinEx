@@ -789,3 +789,78 @@ button.organogram-person-card {
     background: rgba(16, 185, 129, 0.2);
     border-color: rgba(52, 211, 153, 0.45);
 }
+
+/* ==================== LIVE STAFF DIRECTORY ==================== */
+
+.staff-page-heading {
+    min-width: 0;
+}
+
+.staff-filter-grid {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.6fr) repeat(3, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.staff-filter-grid .form-group {
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+.staff-self-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.staff-optional-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.staff-readonly-note,
+.staff-add-intro {
+    margin: 4px 0 16px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.staff-add-intro {
+    margin-top: 18px;
+}
+
+.staff-edit-form {
+    margin-top: 20px;
+}
+
+.staff-edit-actions {
+    margin-top: 18px;
+}
+
+.staff-role-save-message.is-error {
+    color: var(--red);
+}
+
+.departments-panel {
+    margin-top: 24px;
+    scroll-margin-top: 24px;
+}
+
+.staff-details-dialog {
+    overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+    .staff-filter-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 600px) {
+    .staff-filter-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

@@ -1,8 +1,9 @@
 """HttpOnly cookie helpers for the browser interface.
 
-The JSON API still returns bearer tokens for non-browser clients. The browser
-UI never sees them: register/login/refresh also set HttpOnly cookies, so an XSS
-bug cannot read the session. SameSite=Lax stops cross-site form POSTs from
+Browser login/register/refresh endpoints return only session metadata and set
+HttpOnly cookies, so page JavaScript cannot read either token. Non-browser API
+clients use the explicit ``/auth/token`` endpoints, which return bearer tokens
+without relying on cookies. SameSite=Lax stops cross-site form POSTs from
 carrying the cookie (basic CSRF protection for this same-origin UI).
 
 Production forces ``Secure`` cookies; local HTTP development does not.
