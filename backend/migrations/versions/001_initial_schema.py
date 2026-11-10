@@ -274,8 +274,47 @@ def upgrade() -> None:
     op.create_index("ix_audit_logs_org_created", "audit_logs", ["org_id", "created_at"])
 
     # ── Row Level Security on every tenant table ───────────
+    # Memberships do not have their lifecycle status column yet (added in 006),
+    # so freeze the policies as they were at this revision instead of using the
+    # current lifecycle-aware generator. 005/006 replace them later.
+    legacy_membership_policies = [
+        "ALTER TABLE memberships ENABLE ROW LEVEL SECURITY",
+        "ALTER TABLE memberships FORCE ROW LEVEL SECURITY",
+        "DROP POLICY IF EXISTS memberships_tenant_isolation ON memberships",
+        "DROP POLICY IF EXISTS memberships_select ON memberships",
+        "DROP POLICY IF EXISTS memberships_insert ON memberships",
+        "DROP POLICY IF EXISTS memberships_update ON memberships",
+        "DROP POLICY IF EXISTS memberships_delete ON memberships",
+        (
+            "CREATE POLICY memberships_select ON memberships FOR SELECT "
+            "USING (org_id = current_setting('app.current_org_id', true)::uuid"
+            " OR user_id = current_setting('app.current_user_id', true)::uuid)"
+        ),
+        (
+            "CREATE POLICY memberships_insert ON memberships FOR INSERT "
+            "WITH CHECK (org_id = current_setting('app.current_org_id', true)::uuid"
+            " AND current_setting('app.current_role', true) IN ('owner', 'admin'))"
+        ),
+        (
+            "CREATE POLICY memberships_update ON memberships FOR UPDATE "
+            "USING (org_id = current_setting('app.current_org_id', true)::uuid"
+            " AND current_setting('app.current_role', true) IN ('owner', 'admin'))"
+            " WITH CHECK (org_id = current_setting('app.current_org_id', true)::uuid"
+            " AND current_setting('app.current_role', true) IN ('owner', 'admin'))"
+        ),
+        (
+            "CREATE POLICY memberships_delete ON memberships FOR DELETE "
+            "USING (org_id = current_setting('app.current_org_id', true)::uuid"
+            " AND current_setting('app.current_role', true) IN ('owner', 'admin'))"
+        ),
+    ]
     for table in TENANT_TABLES:
-        for statement in rls.rls_statements(table):
+        statements = (
+            legacy_membership_policies
+            if table == "memberships"
+            else rls.rls_statements(table)
+        )
+        for statement in statements:
             op.execute(statement)
 
     # ── audit_logs is append-only ──────────────────────────
