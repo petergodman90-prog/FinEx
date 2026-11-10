@@ -96,6 +96,51 @@ Sale rules:
 - If `proposals.amount` is set it must equal the sale line total. If
   `proposals.currency` is set it must equal `currency`.
 
+`POST /api/v1/sales` stages the same payload as a `sale` proposal. When a line
+omits `unit_price` or `unit_cost`, the API snapshots the product's current sale
+price or default cost before staging. It also checks that the customer and
+products are active, that each product appears once, and that current stock
+covers the requested quantities. Approval remains authoritative because stock
+can change between staging and posting.
+
+### Credit note
+
+```json
+{
+  "customer_id": "0f0b1d4e-7a2c-4f3e-9a1b-9c9f0a7d2e11",
+  "currency": "NGN",
+  "effective_at": "2026-10-23T09:00:00+01:00",
+  "original_receipt_id": "5d9e0c2a-4b6f-4f7e-8a1b-3c2d1e0f9a8b",
+  "restock": true,
+  "refund_method": "cash",
+  "notes": "Returned one item",
+  "lines": [
+    {
+      "product_id": "8a6d2c1f-3f4e-4b5a-8c7d-2e1f0a9b8c7d",
+      "quantity": "1",
+      "unit_price": "150.00",
+      "unit_cost": "100.00",
+      "description": "Blue shirt"
+    }
+  ]
+}
+```
+
+Credit-note rules:
+
+- `customer_id` and `currency` may be omitted when `original_receipt_id` is
+  present; they are inherited from the receipt and must match if supplied.
+- A note linked to a receipt may not exceed the receipt value not already
+  credited. A credit note may reference a receipt, never another credit note.
+- `restock: true` requires a product and a unit cost on every line. The HTTP
+  surface fills an omitted cost from the product master. The API can stage a
+  non-restocked note without a product.
+- The journal debits revenue `4000` and credits the cash account; restocking
+  also debits inventory `1200` and credits COGS `5000`. The credit note is a new
+  document linked to the original receipt and does not edit historical records.
+- `POST /api/v1/sales/credit-notes` stages the operation as a `credit_note`
+  proposal; approval posts it through `post_credit_note`.
+
 ### Expense
 
 ```json

@@ -1,6 +1,6 @@
-# Backend Foundation (Layers 1–9)
+# Backend Foundation (Layers 1-10)
 
-Status: complete and tested (126 tests green). Deferred by design: AI assistant
+Status: complete and tested (130 tests green). Deferred by design: AI assistant
 NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics,
 and email invitations for people who do not yet have a FinEx account.
 
@@ -123,7 +123,29 @@ and email invitations for people who do not yet have a FinEx account.
 - New RBAC permissions: `inventory:read/write`. All roles may read; staff and
   above may write. Stock-changing proposals still require manager approval.
 
-### 8. Migration, roles, tests
+### 8. Sales & credit notes
+- `app/api/sales.py` exposes `GET/POST /api/v1/sales`,
+  `GET /api/v1/sales/{id}`, `GET/POST /api/v1/sales/credit-notes`, and
+  `GET /api/v1/sales/credit-notes/{id}`.
+- `POST /api/v1/sales` stages a `sale` proposal. A line may omit `unit_price`
+  or `unit_cost`; the product's current sale price or cost is snapshotted into
+  the proposal. The API rejects duplicate products, inactive references,
+  insufficient current stock, and totals that cannot be represented as the
+  proposal's two-decimal amount. Approval posts revenue, COGS, stock movements,
+  and either a receipt (cash) or a customer receivable (receivable).
+- Sale responses flatten the proposal payload with customer/product names,
+  line totals, payment terms, journal-entry id, and, once applied, the linked
+  receipt or open-item id.
+- `POST /api/v1/sales/credit-notes` stages a `credit_note` proposal. A note may
+  reference an original receipt, in which case customer and currency are
+  inherited and the uncredited receipt value is checked before staging.
+  Restocked lines require a product and default `unit_cost` from the product
+  master. Approval posts the refund and optional `return_in` stock movements.
+- Credit-note responses surface the applied credit-note document id and number.
+- New RBAC permissions: `sales:read/write`. All roles may read; staff and above
+  may write. Approval still requires `proposals:approve` (manager and above).
+
+### 9. Migration, roles, tests
 - `backend/migrations/versions/001_initial_schema.py`: all tables, RLS
   (`ENABLE` + `FORCE` + policies generated from `rls.py`), the append-only
   audit trigger, `CREATE ROLE finex_app` (NOSUPERUSER, NOBYPASSRLS, NOLOGIN)
@@ -137,16 +159,16 @@ and email invitations for people who do not yet have a FinEx account.
   memberships policy into read-own/read-org SELECT plus owner/admin-only
   INSERT/UPDATE/DELETE, blocking staff self-promotion.
 - `alembic check` is clean (models ↔ migration zero drift).
-- `backend/tests` (126 tests): auth flows, refresh rotation/revocation,
+- `backend/tests` (130 tests): auth flows, refresh rotation/revocation,
   customers CRUD/dedup/merge/permissions, proposal idempotency/caps/expiry,
   dashboard metrics, expenses/suppliers/debts/settlements, product CRUD,
-  opening stock, stock adjustments/valuation, RBAC matrix, staff
-  lifecycle/invitations, crypto (encrypt/blind index), RLS enabled+forced and
-  cross-tenant isolation — including behavioral checks that run as
-  `SET ROLE finex_app`, ledger posting/receipt isolation, safe views,
+  opening stock, stock adjustments/valuation, sales and credit notes, RBAC
+  matrix, staff lifecycle/invitations, crypto (encrypt/blind index), RLS
+  enabled+forced and cross-tenant isolation — including behavioral checks that
+  run as `SET ROLE finex_app`, ledger posting/receipt isolation, safe views,
   cross-tenant posting rejection, and posting idempotency.
 
-### 9. Staff & membership
+### 10. Staff & membership
 - `backend/migrations/versions/006_staff_membership.py` adds membership
   lifecycle status (`active`, `pending`, `suspended`), display-only job
   titles, department and manager links, plus tenant-scoped `departments` and

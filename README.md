@@ -8,7 +8,7 @@ financial posting service that is the single source of financial and stock truth
 
 | Path | Owner | Contents |
 | --- | --- | --- |
-| `backend/` | Person B | FastAPI platform API: auth/sessions, tenant isolation (RLS), CRM, dashboard, expenses/debts, inventory, proposals, audit |
+| `backend/` | Person B | FastAPI platform API: auth/sessions, tenant isolation (RLS), CRM, dashboard, expenses/debts, inventory, sales, proposals, audit |
 | `db/migrations/` | Person A | Canonical SQL for the financial core (`ledger` schema, posting functions, immutable records); executed by Alembic revision 002 |
 | `assets/`, `css/`, `js/`, `pages/`, `index.html` | Person C | Static HTML/CSS/JS interface (no build step) |
 | `docs/` | All | Architecture, contracts, security charter, ADRs, runbooks |
@@ -37,7 +37,7 @@ service; the UI displays backend-provided figures without recalculating them.
    pip install -r requirements.txt -r requirements-dev.txt
    alembic upgrade head
    uvicorn app.main:app --reload        # UI + API: http://127.0.0.1:8000/
-   pytest -q                            # 126 tests; Postgres required, Redis faked
+   pytest -q                            # 130 tests; Postgres required, Redis faked
    ```
 
 4. Open <http://127.0.0.1:8000/>. The backend serves `index.html` and only the

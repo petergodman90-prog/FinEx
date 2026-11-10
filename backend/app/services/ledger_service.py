@@ -253,6 +253,15 @@ class ReceiptLine:
     line_total: Decimal
 
 
+@dataclass(frozen=True)
+class PostingDocuments:
+    journal_entry_id: uuid.UUID
+    receipt_id: uuid.UUID | None
+    receipt_number: int | None
+    receipt_type: str | None
+    open_item_id: uuid.UUID | None
+
+
 # ── Accounts ─────────────────────────────────────────────────
 
 _ACCOUNT_COLUMNS = """
@@ -1509,6 +1518,76 @@ async def get_receipt_lines(
         )
         for r in rows
     ]
+
+
+async def receipt_credit_note_total(
+    session: AsyncSession, org_id: uuid.UUID, receipt_id: uuid.UUID
+) -> Decimal:
+    value = await session.scalar(
+        text(
+            """
+            SELECT coalesce(sum(total_amount), 0)
+            FROM ledger.receipts
+            WHERE org_id = :org
+              AND credit_note_of_id = CAST(:id AS uuid)
+              AND receipt_type = 'credit_note'
+            """
+        ),
+        {"org": org_id, "id": receipt_id},
+    )
+    return Decimal(value or 0)
+
+
+async def get_posting_documents(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    journal_entry_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, PostingDocuments]:
+    if not journal_entry_ids:
+        return {}
+    rows = (
+        await session.execute(
+            text(
+                """
+                SELECT je.id AS journal_entry_id,
+                       r.id AS receipt_id,
+                       r.receipt_number,
+                       r.receipt_type,
+                       oi.id AS open_item_id
+                FROM ledger.journal_entries je
+                LEFT JOIN LATERAL (
+                    SELECT id, receipt_number, receipt_type
+                    FROM ledger.receipts
+                    WHERE org_id = je.org_id
+                      AND journal_entry_id = je.id
+                    ORDER BY receipt_number
+                    LIMIT 1
+                ) r ON true
+                LEFT JOIN LATERAL (
+                    SELECT id
+                    FROM ledger.open_items
+                    WHERE org_id = je.org_id
+                      AND originating_journal_entry_id = je.id
+                    ORDER BY created_at
+                    LIMIT 1
+                ) oi ON true
+                WHERE je.org_id = :org
+                  AND je.id = ANY(CAST(:ids AS uuid[]))
+                """
+            ),
+            {"org": org_id, "ids": journal_entry_ids},
+        )
+    ).all()
+    return {
+        row.journal_entry_id: PostingDocuments(
+            journal_entry_id=row.journal_entry_id,
+            receipt_id=row.receipt_id,
+            receipt_number=row.receipt_number,
+            receipt_type=row.receipt_type,
+            open_item_id=row.open_item_id,
+        )
+        for row in rows
+    }
 
 
 # ── Accounting periods ───────────────────────────────────────
