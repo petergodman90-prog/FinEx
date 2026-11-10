@@ -1493,19 +1493,22 @@ async def get_receipt(
 
 
 async def get_receipt_lines(
-    session: AsyncSession, receipt_id: uuid.UUID
+    session: AsyncSession, org_id: uuid.UUID, receipt_id: uuid.UUID
 ) -> list[ReceiptLine]:
     rows = (
         await session.execute(
             text(
                 """
-                SELECT line_number, description, quantity, unit_price, line_total
-                FROM ledger.receipt_lines
-                WHERE receipt_id = CAST(:id AS uuid)
-                ORDER BY line_number
+                SELECT rl.line_number, rl.description, rl.quantity,
+                       rl.unit_price, rl.line_total
+                FROM ledger.receipt_lines rl
+                JOIN ledger.receipts r
+                  ON r.id = rl.receipt_id AND r.org_id = :org
+                WHERE r.id = CAST(:id AS uuid)
+                ORDER BY rl.line_number
                 """
             ),
-            {"id": receipt_id},
+            {"org": org_id, "id": receipt_id},
         )
     ).all()
     return [

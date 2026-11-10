@@ -10,7 +10,8 @@ These tests exercise the application service, not just the SQL functions:
 * an insufficient-stock or closed-period failure leaves no partial writes;
 * cross-organisation customers/products/accounts are rejected;
 * reversal restores stock and is idempotent;
-* manual proposals are not postable.
+* manual proposals are not postable;
+* receipt and report read models are organisation-scoped.
 """
 
 from __future__ import annotations
@@ -1323,6 +1324,213 @@ async def test_debt_aging_is_org_scoped(org_factory) -> None:
     assert sum(
         (bucket.outstanding_amount for bucket in payable_a.buckets), Decimal("0")
     ) == payable_a.total_outstanding
+
+
+async def test_reports_are_org_scoped(org_factory) -> None:
+    org_a = await org_factory("ReportOrgA")
+    org_b = await org_factory("ReportOrgB")
+
+    product_a = await _create_product(org_a, sku="REPORT-A")
+    customer_a = await _create_customer(org_a)
+    await _add_opening_stock(org_a, product_a, "10")
+    await _post_sale(
+        org_a, uuid.uuid4(), _sale_payload(customer_a, product_a)
+    )
+    await _post_expense(org_a, amount="10.00", category="rent")
+
+    product_b = await _create_product(org_b, sku="REPORT-B")
+    customer_b = await _create_customer(org_b)
+    await _add_opening_stock(org_b, product_b, "10")
+    await _post_sale(
+        org_b,
+        uuid.uuid4(),
+        _sale_payload(customer_b, product_b, quantity="3"),
+    )
+    await _post_expense(org_b, amount="5.00", category="rent")
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org_a)
+            pnl_a = await ledger_service.profit_and_loss(
+                session,
+                org_a["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 1, 31),
+            )
+            balance_a = await ledger_service.balance_sheet(
+                session, org_a["org_id"], as_of=date(2026, 1, 31)
+            )
+            stock_a = await ledger_service.stock_valuation(
+                session, org_a["org_id"]
+            )
+            trial_a = await ledger_service.trial_balance(
+                session, org_a["org_id"]
+            )
+
+        async with session.begin():
+            await _bind(session, org_b)
+            pnl_b = await ledger_service.profit_and_loss(
+                session,
+                org_b["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 1, 31),
+            )
+            balance_b = await ledger_service.balance_sheet(
+                session, org_b["org_id"], as_of=date(2026, 1, 31)
+            )
+            stock_b = await ledger_service.stock_valuation(
+                session, org_b["org_id"]
+            )
+            trial_b = await ledger_service.trial_balance(
+                session, org_b["org_id"]
+            )
+
+    assert pnl_a.revenue_total == Decimal("40")
+    assert pnl_a.cogs_total == Decimal("20")
+    assert pnl_a.operating_expense_total == Decimal("10")
+    assert pnl_a.net_profit == Decimal("10")
+
+    assert pnl_b.revenue_total == Decimal("60")
+    assert pnl_b.cogs_total == Decimal("30")
+    assert pnl_b.operating_expense_total == Decimal("5")
+    assert pnl_b.net_profit == Decimal("25")
+
+    assert balance_a.total_assets == Decimal("110")
+    assert balance_a.current_earnings == Decimal("10")
+    assert balance_a.is_balanced is True
+    assert balance_b.total_assets == Decimal("125")
+    assert balance_b.current_earnings == Decimal("25")
+    assert balance_b.is_balanced is True
+
+    assert {row.product_id for row in stock_a.rows} == {product_a}
+    assert stock_a.rows[0].quantity_on_hand == Decimal("8")
+    assert stock_a.total_book_value == Decimal("80")
+    assert stock_a.is_reconciled is True
+    assert {row.product_id for row in stock_b.rows} == {product_b}
+    assert stock_b.rows[0].quantity_on_hand == Decimal("7")
+    assert stock_b.total_book_value == Decimal("70")
+    assert stock_b.is_reconciled is True
+
+    trial_a_by_code = {line.account_code: line for line in trial_a}
+    assert trial_a_by_code["4000"].credit_total == Decimal("40")
+    assert trial_a_by_code["4000"].debit_total == Decimal("0")
+    trial_b_by_code = {line.account_code: line for line in trial_b}
+    assert trial_b_by_code["4000"].credit_total == Decimal("60")
+    assert trial_b_by_code["4000"].debit_total == Decimal("0")
+
+
+async def test_receipt_read_models_are_org_scoped_and_filterable(
+    org_factory,
+) -> None:
+    org_a = await org_factory("ReceiptA")
+    org_b = await org_factory("ReceiptB")
+
+    product_a = await _create_product(org_a, sku="RECEIPT-A")
+    customer_a = await _create_customer(org_a)
+    await _add_opening_stock(org_a, product_a, "10")
+    sale_a = await _post_sale(
+        org_a, uuid.uuid4(), _sale_payload(customer_a, product_a)
+    )
+    assert sale_a.receipt_id is not None
+    credit_a = await _post_credit_note(
+        org_a,
+        uuid.uuid4(),
+        _credit_payload(
+            product_a,
+            customer_id=None,
+            currency=None,
+            original_receipt_id=sale_a.receipt_id,
+        ),
+    )
+    assert credit_a.credit_note_id is not None
+
+    product_b = await _create_product(org_b, sku="RECEIPT-B")
+    customer_b = await _create_customer(org_b)
+    await _add_opening_stock(org_b, product_b, "10")
+    sale_b = await _post_sale(
+        org_b, uuid.uuid4(), _sale_payload(customer_b, product_b)
+    )
+    assert sale_b.receipt_id is not None
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org_a)
+            receipts, receipt_count = await ledger_service.list_receipts(
+                session, org_a["org_id"]
+            )
+            sales, sale_count = await ledger_service.list_receipts(
+                session, org_a["org_id"], receipt_type="receipt"
+            )
+            notes, note_count = await ledger_service.list_receipts(
+                session, org_a["org_id"], receipt_type="credit_note"
+            )
+            customer_receipts, customer_count = await ledger_service.list_receipts(
+                session, org_a["org_id"], customer_id=customer_a
+            )
+            second_page, page_count = await ledger_service.list_receipts(
+                session, org_a["org_id"], limit=1, offset=1
+            )
+            sale_receipt = await ledger_service.get_receipt(
+                session, org_a["org_id"], sale_a.receipt_id
+            )
+            sale_lines = await ledger_service.get_receipt_lines(
+                session, org_a["org_id"], sale_a.receipt_id
+            )
+            credit_lines = await ledger_service.get_receipt_lines(
+                session, org_a["org_id"], credit_a.credit_note_id
+            )
+            credited = await ledger_service.receipt_credit_note_total(
+                session, org_a["org_id"], sale_a.receipt_id
+            )
+            foreign_receipt = await ledger_service.get_receipt(
+                session, org_a["org_id"], sale_b.receipt_id
+            )
+            foreign_lines = await ledger_service.get_receipt_lines(
+                session, org_a["org_id"], sale_b.receipt_id
+            )
+            foreign_credited = await ledger_service.receipt_credit_note_total(
+                session, org_a["org_id"], sale_b.receipt_id
+            )
+
+    assert receipt_count == 2
+    assert [receipt.receipt_type for receipt in receipts] == [
+        "credit_note",
+        "receipt",
+    ]
+    assert receipts[0].id == credit_a.credit_note_id
+    assert receipts[0].credit_note_of_id == sale_a.receipt_id
+    assert receipts[1].id == sale_a.receipt_id
+
+    assert sale_count == 1
+    assert sales[0].id == sale_a.receipt_id
+    assert note_count == 1
+    assert notes[0].id == credit_a.credit_note_id
+    assert customer_count == 2
+    assert {receipt.id for receipt in customer_receipts} == {
+        sale_a.receipt_id,
+        credit_a.credit_note_id,
+    }
+    assert page_count == 2
+    assert [receipt.id for receipt in second_page] == [sale_a.receipt_id]
+
+    assert sale_receipt is not None
+    assert sale_receipt.receipt_type == "receipt"
+    assert sale_receipt.total_amount == Decimal("40")
+    assert sale_receipt.customer_id == customer_a
+    assert sale_receipt.currency_code == "NGN"
+    assert len(sale_lines) == 1
+    assert sale_lines[0].description
+    assert sale_lines[0].quantity == Decimal("2")
+    assert sale_lines[0].unit_price == Decimal("20")
+    assert sale_lines[0].line_total == Decimal("40")
+    assert len(credit_lines) == 1
+    assert credit_lines[0].quantity == Decimal("1")
+    assert credit_lines[0].line_total == Decimal("20")
+    assert credited == Decimal("20")
+
+    assert foreign_receipt is None
+    assert foreign_lines == []
+    assert foreign_credited == Decimal("0")
 
 
 # ── Settlements ──────────────────────────────────────────────

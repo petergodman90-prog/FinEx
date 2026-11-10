@@ -1,6 +1,6 @@
 # Backend Foundation (Layers 1-10)
 
-Status: complete and tested (130 tests green). Deferred by design: AI assistant
+Status: complete and tested (132 tests green). Deferred by design: AI assistant
 NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics,
 and email invitations for people who do not yet have a FinEx account.
 
@@ -159,11 +159,12 @@ and email invitations for people who do not yet have a FinEx account.
   memberships policy into read-own/read-org SELECT plus owner/admin-only
   INSERT/UPDATE/DELETE, blocking staff self-promotion.
 - `alembic check` is clean (models ↔ migration zero drift).
-- `backend/tests` (130 tests): auth flows, refresh rotation/revocation,
+- `backend/tests` (132 tests): auth flows, refresh rotation/revocation,
   customers CRUD/dedup/merge/permissions, proposal idempotency/caps/expiry,
   dashboard metrics, expenses/suppliers/debts/settlements, product CRUD,
-  opening stock, stock adjustments/valuation, sales and credit notes, RBAC
-  matrix, staff lifecycle/invitations, crypto (encrypt/blind index), RLS
+  opening stock, stock adjustments/valuation, sales and credit notes, receipt
+  read models and ledger reports, RBAC matrix, staff lifecycle/invitations,
+  crypto (encrypt/blind index), RLS
   enabled+forced and cross-tenant isolation — including behavioral checks that
   run as `SET ROLE finex_app`, ledger posting/receipt isolation, safe views,
   cross-tenant posting rejection, and posting idempotency.
