@@ -34,7 +34,8 @@ class SaleLineCreate(BaseModel):
     product_id: uuid.UUID
     quantity: Quantity
     unit_price: Money | None = None
-    unit_cost: Money | None = None
+    # Cost is deliberately not client-selectable: the staging service snapshots
+    # the product's current cost so a sale cannot understate COGS or inventory.
     description: Description | None = None
 
     @field_validator("description", mode="before")
@@ -109,7 +110,8 @@ class CreditNoteLineCreate(BaseModel):
     product_id: uuid.UUID | None = None
     quantity: Quantity
     unit_price: Money
-    unit_cost: Money | None = None
+    # The posting service derives restock cost from the original sale (or the
+    # product master for unlinked notes); clients cannot choose it.
     description: Description | None = None
 
     @field_validator("description", mode="before")

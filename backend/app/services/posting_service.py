@@ -752,6 +752,119 @@ async def _require_accounts(
     return accounts
 
 
+def _require_cash_account(
+    accounts: dict[str, ledger_service.Account], code: str
+) -> ledger_service.Account:
+    account = accounts[code]
+    if not account.is_cash_account:
+        raise PostingValidationError(
+            "The selected account is not a cash account",
+            code="invalid_cash_account",
+            details={"account_code": code},
+        )
+    return account
+
+
+async def _original_sale_lines(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    journal_entry_id: uuid.UUID,
+) -> dict[uuid.UUID, tuple[Decimal, Decimal]] | None:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT payload
+                FROM proposals
+                WHERE org_id = CAST(:org AS uuid)
+                  AND journal_entry_id = CAST(:entry AS uuid)
+                  AND proposal_type = 'sale'
+                  AND deleted_at IS NULL
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ),
+            {"org": org_id, "entry": journal_entry_id},
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    lines: dict[uuid.UUID, tuple[Decimal, Decimal]] = {}
+    for line in (row.payload or {}).get("lines") or []:
+        try:
+            product_id = uuid.UUID(str(line.get("product_id")))
+        except (ValueError, TypeError):
+            continue
+        lines[product_id] = (
+            _quantize(line.get("quantity") or 0),
+            _quantize(line.get("unit_cost") or 0),
+        )
+    return lines
+
+
+async def _prior_credit_quantities(
+    session: AsyncSession, org_id: uuid.UUID, receipt_id: uuid.UUID
+) -> dict[uuid.UUID, Decimal]:
+    rows = await session.execute(
+        text(
+            """
+            SELECT payload
+            FROM proposals
+            WHERE org_id = CAST(:org AS uuid)
+              AND proposal_type = 'credit_note'
+              AND status = 'applied'
+              AND deleted_at IS NULL
+              AND payload ->> 'original_receipt_id' = :receipt
+            """
+        ),
+        {"org": org_id, "receipt": str(receipt_id)},
+    )
+    quantities: dict[uuid.UUID, Decimal] = {}
+    for row in rows:
+        for line in (row.payload or {}).get("lines") or []:
+            try:
+                product_id = uuid.UUID(str(line.get("product_id")))
+            except (ValueError, TypeError):
+                continue
+            quantities[product_id] = quantities.get(
+                product_id, Decimal("0")
+            ) + _quantize(line.get("quantity") or 0)
+    return quantities
+
+
+def _validate_credit_lines_against_sale(
+    original_lines: dict[uuid.UUID, tuple[Decimal, Decimal]],
+    prior_quantities: dict[uuid.UUID, Decimal],
+    lines: list[Any],
+) -> None:
+    for line in lines:
+        if line.product_id is None:
+            continue
+        if line.product_id not in original_lines:
+            raise PostingValidationError(
+                "A credit note line must belong to the original sale",
+                code="invalid_credit_note_line",
+                details={"product_id": str(line.product_id)},
+            )
+        sold_quantity, _ = original_lines[line.product_id]
+        remaining = sold_quantity - prior_quantities.get(
+            line.product_id, Decimal("0")
+        )
+        if _quantize(line.quantity) > remaining:
+            raise PostingValidationError(
+                "A credit note quantity exceeds the unreturned sale quantity",
+                code="invalid_credit_note_quantity",
+                details={
+                    "product_id": str(line.product_id),
+                    "sold": str(sold_quantity),
+                    "already_credited": str(
+                        prior_quantities.get(line.product_id, Decimal("0"))
+                    ),
+                    "requested": str(_quantize(line.quantity)),
+                },
+            )
+
+
 async def _require_products(
     session: AsyncSession, org_id: uuid.UUID, products: list[Any]
 ) -> dict[uuid.UUID, ledger_service.Product]:
@@ -1039,7 +1152,9 @@ async def post_sale(
         accounts = await _require_accounts(session, org_id, required)
 
         settlement_account = (
-            accounts[sale.payment.cash_account_code]
+            _require_cash_account(
+                accounts, sale.payment.cash_account_code
+            )
             if sale.payment.method == "cash"
             else accounts[RECEIVABLES]
         )
@@ -1233,6 +1348,8 @@ async def post_credit_note(
         await ensure_default_chart(session, org_id)
 
         receipt = None
+        original_lines: dict[uuid.UUID, tuple[Decimal, Decimal]] | None = None
+        prior_quantities: dict[uuid.UUID, Decimal] = {}
         if credit.original_receipt_id is not None:
             receipt = (
                 await session.execute(
@@ -1262,6 +1379,30 @@ async def post_credit_note(
                     "A credit note must reference a receipt, not another credit note",
                     code="invalid_credit_note_source",
                 )
+            # Serialise credit notes per receipt. The app role only has SELECT
+            # on ledger tables, so use an advisory lock instead of FOR UPDATE.
+            await session.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock("
+                    "hashtextextended(CAST(:key AS text), 0))"
+                ),
+                {"key": f"finex-credit-note:{org_id}:{receipt.id}"},
+            )
+            original_lines = await _original_sale_lines(
+                session, org_id, receipt.journal_entry_id
+            )
+            if original_lines is None:
+                raise PostingValidationError(
+                    "The receipt is not linked to a completed sale",
+                    code="invalid_credit_note_source",
+                    details={"receipt_id": str(receipt.id)},
+                )
+            prior_quantities = await _prior_credit_quantities(
+                session, org_id, receipt.id
+            )
+            _validate_credit_lines_against_sale(
+                original_lines, prior_quantities, credit.lines
+            )
 
         if receipt is not None:
             if (
@@ -1340,20 +1481,51 @@ async def post_credit_note(
                 )
 
         if credit.restock and any(
-            line.product_id is None or line.unit_cost is None for line in credit.lines
+            line.product_id is None for line in credit.lines
         ):
             raise PostingValidationError(
-                "Restocked credit-note lines require a product and a unit cost",
+                "Restocked credit-note lines require a product",
                 code="invalid_credit_note_line",
             )
-        products = (
-            await _require_products(session, org_id, credit.lines)
-            if credit.restock
-            else {}
-        )
+        products: dict[uuid.UUID, ledger_service.Product] = {}
+        restock_costs: dict[uuid.UUID, Decimal] = {}
+        if credit.restock:
+            product_ids = [line.product_id for line in credit.lines]
+            if len(product_ids) != len(set(product_ids)):
+                raise PostingValidationError(
+                    "A payload may contain each product only once",
+                    code="duplicate_product_line",
+                )
+            products = await ledger_service.get_products(
+                session, org_id, product_ids
+            )
+            missing = [
+                str(product_id)
+                for product_id in product_ids
+                if product_id not in products
+            ]
+            if missing:
+                raise PostingValidationError(
+                    "The product does not exist in this organisation",
+                    code="product_not_found",
+                    details={"missing": missing},
+                )
+            for line in credit.lines:
+                if original_lines is not None:
+                    restock_costs[line.product_id] = original_lines[
+                        line.product_id
+                    ][1]
+                else:
+                    restock_costs[line.product_id] = products[
+                        line.product_id
+                    ].current_cost
         cost_total = _quantize(
             sum(
-                (line.quantity * (line.unit_cost or Decimal("0")) for line in credit.lines),
+                (
+                    line.quantity
+                    * restock_costs.get(line.product_id, Decimal("0"))
+                    for line in credit.lines
+                ),
                 Decimal("0"),
             )
         )
@@ -1362,6 +1534,7 @@ async def post_credit_note(
         if credit.restock:
             required.extend([INVENTORY, COGS])
         accounts = await _require_accounts(session, org_id, required)
+        _require_cash_account(accounts, credit.cash_account_code)
 
         journal_lines = [
             _line(
@@ -1434,7 +1607,7 @@ async def post_credit_note(
                         "product": line.product_id,
                         "entry": entry_id,
                         "quantity": _quantize(line.quantity),
-                        "cost": _quantize(line.unit_cost),
+                        "cost": restock_costs[line.product_id],
                         "source_type": source_type,
                         "source": source_id,
                         "occurred": credit.effective_at,
@@ -1544,6 +1717,10 @@ async def post_expense(
             raise PostingValidationError(
                 "The selected account is not an expense account",
                 code="invalid_expense_account",
+            )
+        if expense.payment.method == "cash":
+            _require_cash_account(
+                accounts, expense.payment.cash_account_code
             )
 
         supplier_id = expense.payment.supplier_id
@@ -1752,7 +1929,7 @@ async def settle_open_item(
                 details={"item_type": item.item_type},
             )
         accounts = await _require_accounts(session, org_id, required)
-        cash_account = accounts[cash_account_code]
+        cash_account = _require_cash_account(accounts, cash_account_code)
 
         if item.item_type == "customer_receivable":
             journal_lines = [

@@ -33,6 +33,7 @@ from app.schemas.auth import RegisterRequest
 from app.services import auth_service, ledger_service, posting_service
 from app.services.posting_service import (
     PostingConflictError,
+    PostingError,
     PostingRetryableError,
     PostingValidationError,
 )
@@ -658,18 +659,22 @@ async def test_credit_note_without_restock_is_capped_by_receipt(org_factory) -> 
     assert second.credit_note_id is not None
 
     before_rejection = await _counts(org)
+    over_credit_payload = _credit_payload(
+        product_id,
+        customer_id=customer_id,
+        original_receipt_id=sale.receipt_id,
+        quantity="0.01",
+        unit_price="20.00",
+        restock=False,
+    )
+    # A non-restocked line may omit the product. The monetary cap must still
+    # stop a refund that would exceed the receipt's credited value.
+    over_credit_payload["lines"][0].pop("product_id")
     with pytest.raises(PostingValidationError) as excinfo:
         await _post_credit_note(
             org,
             uuid.uuid4(),
-            _credit_payload(
-                product_id,
-                customer_id=customer_id,
-                original_receipt_id=sale.receipt_id,
-                quantity="0.01",
-                unit_price="20.00",
-                restock=False,
-            ),
+            over_credit_payload,
         )
     assert excinfo.value.code == "invalid_credit_note_amount"
     assert await _counts(org) == before_rejection
@@ -1062,6 +1067,116 @@ async def test_concurrent_approval_posts_exactly_once(org_factory) -> None:
     assert after["posting_events"] == before["posting_events"] + 1
     assert after["stock_movements"] == before["stock_movements"] + 1
     assert after["receipts"] == before["receipts"] + 1
+
+
+async def test_concurrent_settlements_cannot_overpay(org_factory) -> None:
+    org = await org_factory("SettlementLock")
+    product_id = await _create_product(org)
+    customer_id = await _create_customer(org)
+    await _add_opening_stock(org, product_id)
+    sale = await _post_sale(
+        org,
+        uuid.uuid4(),
+        _sale_payload(
+            customer_id,
+            product_id,
+            quantity="2",
+            method="receivable",
+        ),
+    )
+    assert sale.open_item_id is not None
+
+    async def attempt():
+        async with SessionLocal() as session:
+            async with session.begin():
+                await _bind(session, org)
+                try:
+                    return await posting_service.post_settlement(
+                        session,
+                        org_id=org["org_id"],
+                        proposal_id=uuid.uuid4(),
+                        payload={
+                            "open_item_id": str(sale.open_item_id),
+                            "amount": "30.00",
+                            "currency": "NGN",
+                            "effective_at": "2026-02-01T10:00:00Z",
+                        },
+                        requested_by=org["user_id"],
+                        role="owner",
+                    )
+                except PostingError as exc:
+                    return exc
+
+    first, second = await asyncio.gather(attempt(), attempt())
+    successes = [item for item in (first, second) if not isinstance(item, PostingError)]
+    failures = [item for item in (first, second) if isinstance(item, PostingError)]
+    assert len(successes) == 1
+    assert len(failures) == 1
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            allocated = await session.scalar(
+                text(
+                    "SELECT coalesce(sum(amount), 0) "
+                    "FROM ledger.payment_allocations "
+                    "WHERE org_id = CAST(:org AS uuid) "
+                    "AND open_item_id = CAST(:item AS uuid)"
+                ),
+                {"org": org["org_id"], "item": sale.open_item_id},
+            )
+    assert Decimal(allocated) == Decimal("30.0000")
+
+
+async def test_concurrent_credit_notes_cannot_overcredit(org_factory) -> None:
+    org = await org_factory("CreditLock")
+    product_id = await _create_product(org)
+    customer_id = await _create_customer(org)
+    await _add_opening_stock(org, product_id)
+    sale = await _post_sale(
+        org,
+        uuid.uuid4(),
+        _sale_payload(customer_id, product_id, quantity="2"),
+    )
+    assert sale.receipt_id is not None
+
+    async def attempt():
+        async with SessionLocal() as session:
+            async with session.begin():
+                await _bind(session, org)
+                try:
+                    return await posting_service.post_proposal(
+                        session,
+                        org_id=org["org_id"],
+                        proposal_id=uuid.uuid4(),
+                        proposal_type="credit_note",
+                        payload=_credit_payload(
+                            product_id,
+                            customer_id=None,
+                            currency=None,
+                            original_receipt_id=sale.receipt_id,
+                            quantity="1",
+                            unit_price="30.00",
+                        ),
+                        requested_by=org["user_id"],
+                        role="owner",
+                    )
+                except PostingError as exc:
+                    return exc
+
+    first, second = await asyncio.gather(attempt(), attempt())
+    successes = [item for item in (first, second) if not isinstance(item, PostingError)]
+    failures = [item for item in (first, second) if isinstance(item, PostingError)]
+    assert len(successes) == 1
+    assert len(failures) == 1
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            credited = await ledger_service.receipt_credit_note_total(
+                session, org["org_id"], sale.receipt_id
+            )
+    assert credited == Decimal("30.0000")
 
 
 async def test_reversal_restores_stock_and_is_idempotent(org_factory) -> None:

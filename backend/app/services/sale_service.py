@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import TokenPayload
@@ -129,6 +129,94 @@ async def _require_sale_products(
             details={"missing": missing, "inactive": inactive},
         )
     return products
+
+
+async def _original_sale_lines(
+    session: AsyncSession, org_id: uuid.UUID, receipt: ledger_service.Receipt
+) -> dict[uuid.UUID, tuple[Decimal, Decimal]] | None:
+    """Return product quantity/cost snapshots for the sale behind a receipt."""
+    proposal = await session.scalar(
+        select(Proposal)
+        .where(
+            Proposal.org_id == org_id,
+            Proposal.journal_entry_id == receipt.journal_entry_id,
+            Proposal.proposal_type == "sale",
+            Proposal.deleted_at.is_(None),
+        )
+        .order_by(Proposal.created_at.desc())
+        .limit(1)
+    )
+    if proposal is None:
+        return None
+    lines: dict[uuid.UUID, tuple[Decimal, Decimal]] = {}
+    for line in (proposal.payload or {}).get("lines") or []:
+        product_id = _uuid_or_none(line.get("product_id"))
+        if product_id is None:
+            continue
+        lines[product_id] = (
+            _decimal(line.get("quantity")),
+            _decimal(line.get("unit_cost")),
+        )
+    return lines
+
+
+async def _prior_credit_quantities(
+    session: AsyncSession, org_id: uuid.UUID, receipt_id: uuid.UUID
+) -> dict[uuid.UUID, Decimal]:
+    """Quantities already credited against a receipt, by product."""
+    rows = await session.execute(
+        text(
+            """
+            SELECT payload
+            FROM proposals
+            WHERE org_id = CAST(:org AS uuid)
+              AND proposal_type = 'credit_note'
+              AND status = 'applied'
+              AND deleted_at IS NULL
+              AND payload ->> 'original_receipt_id' = :receipt
+            """
+        ),
+        {"org": org_id, "receipt": str(receipt_id)},
+    )
+    quantities: dict[uuid.UUID, Decimal] = {}
+    for row in rows:
+        for line in (row.payload or {}).get("lines") or []:
+            product_id = _uuid_or_none(line.get("product_id"))
+            if product_id is None:
+                continue
+            quantities[product_id] = (
+                quantities.get(product_id, ZERO) + _decimal(line.get("quantity"))
+            )
+    return quantities
+
+
+def _validate_credit_lines_against_sale(
+    original_lines: dict[uuid.UUID, tuple[Decimal, Decimal]],
+    prior_quantities: dict[uuid.UUID, Decimal],
+    lines: list,
+) -> None:
+    for line in lines:
+        if line.product_id is None:
+            continue
+        if line.product_id not in original_lines:
+            raise DomainValidationError(
+                "A credit note line must belong to the original sale",
+                details={"product_id": str(line.product_id)},
+            )
+        sold_quantity, _ = original_lines[line.product_id]
+        remaining = sold_quantity - prior_quantities.get(line.product_id, ZERO)
+        if line.quantity > remaining:
+            raise DomainValidationError(
+                "A credit note quantity exceeds the unreturned sale quantity",
+                details={
+                    "product_id": str(line.product_id),
+                    "sold": str(sold_quantity),
+                    "already_credited": str(
+                        prior_quantities.get(line.product_id, ZERO)
+                    ),
+                    "requested": str(line.quantity),
+                },
+            )
 
 
 async def _customer_names(
@@ -390,11 +478,7 @@ async def create_sale(
             if line.unit_price is not None
             else product.current_sale_price
         )
-        unit_cost = (
-            line.unit_cost
-            if line.unit_cost is not None
-            else product.current_cost
-        )
+        unit_cost = product.current_cost
         total += line.quantity * unit_price
         payload_line: dict = {
             "product_id": str(line.product_id),
@@ -520,6 +604,24 @@ async def create_credit_note(
     customer = await customer_service.get_customer(session, actor, customer_id)
     _require_sale_customer(customer, customer_id)
 
+    original_lines = None
+    prior_quantities: dict[uuid.UUID, Decimal] = {}
+    if receipt is not None:
+        original_lines = await _original_sale_lines(
+            session, actor.org_id, receipt
+        )
+        if original_lines is None:
+            raise DomainValidationError(
+                "The original receipt is not linked to a completed sale",
+                details={"receipt_id": str(receipt.id)},
+            )
+        prior_quantities = await _prior_credit_quantities(
+            session, actor.org_id, receipt.id
+        )
+        _validate_credit_lines_against_sale(
+            original_lines, prior_quantities, data.lines
+        )
+
     product_ids = [
         line.product_id
         for line in data.lines
@@ -529,24 +631,22 @@ async def create_credit_note(
         session, actor.org_id, product_ids
     )
     missing = [str(pid) for pid in product_ids if pid not in products]
-    inactive = [
-        str(pid)
-        for pid in product_ids
-        if pid in products and not products[pid].is_active
-    ]
-    if missing or (data.restock and inactive):
+    if missing:
         raise DomainValidationError(
-            "One or more products do not exist or are inactive",
-            details={"missing": missing, "inactive": inactive},
+            "One or more products do not exist",
+            details={"missing": missing},
         )
 
     total = ZERO
     payload_lines: list[dict] = []
     for line in data.lines:
         product = products.get(line.product_id) if line.product_id else None
-        unit_cost = line.unit_cost
-        if data.restock and unit_cost is None and product is not None:
-            unit_cost = product.current_cost
+        unit_cost = None
+        if data.restock:
+            if original_lines is not None and line.product_id is not None:
+                unit_cost = original_lines[line.product_id][1]
+            elif product is not None:
+                unit_cost = product.current_cost
         total += line.quantity * line.unit_price
         payload_line: dict = {
             "quantity": str(line.quantity),

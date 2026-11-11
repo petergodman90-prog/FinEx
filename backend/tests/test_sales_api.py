@@ -98,9 +98,9 @@ async def _create_sale(
     quantity: str = "2",
     method: str = "cash",
     unit_price: str | None = "25.50",
-    unit_cost: str | None = "10.00",
     due_on: str | None = None,
     issue_receipt: bool | None = None,
+    cash_account_code: str = "1000",
     effective_at: str | None = None,
     idempotency_key: str | None = None,
     expected_status: int = 200,
@@ -108,9 +108,10 @@ async def _create_sale(
     line: dict = {"product_id": product_id, "quantity": quantity}
     if unit_price is not None:
         line["unit_price"] = unit_price
-    if unit_cost is not None:
-        line["unit_cost"] = unit_cost
-    payment: dict = {"method": method}
+    payment: dict = {
+        "method": method,
+        "cash_account_code": cash_account_code,
+    }
     if due_on is not None:
         payment["due_on"] = due_on
     if issue_receipt is not None:
@@ -139,10 +140,10 @@ async def _create_credit_note(
     original_receipt_id: str,
     quantity: str = "1",
     unit_price: str = "25.50",
-    unit_cost: str | None = None,
     customer_id: str | None = None,
     currency: str | None = None,
     restock: bool = True,
+    cash_account_code: str = "1000",
     idempotency_key: str | None = None,
     expected_status: int = 200,
 ):
@@ -151,13 +152,12 @@ async def _create_credit_note(
         "quantity": quantity,
         "unit_price": unit_price,
     }
-    if unit_cost is not None:
-        line["unit_cost"] = unit_cost
     payload: dict = {
         "effective_at": _now(),
         "lines": [line],
         "original_receipt_id": original_receipt_id,
         "restock": restock,
+        "cash_account_code": cash_account_code,
         "idempotency_key": idempotency_key or uuid.uuid4().hex,
     }
     if customer_id is not None:
@@ -337,15 +337,51 @@ async def test_receivable_sale_and_credit_note(client, register_user) -> None:
         before.json()["quantity_on_hand"]
     ) + Decimal("1")
 
+    other_product = await _create_product(client, h)
+    unrelated = await _create_credit_note(
+        client,
+        h,
+        product_id=other_product["id"],
+        original_receipt_id=receipt_id,
+        expected_status=422,
+    )
+    assert unrelated.json()["code"] == "validation_error"
+
+    over_quantity = await _create_credit_note(
+        client,
+        h,
+        product_id=product["id"],
+        original_receipt_id=receipt_id,
+        quantity="5",
+        expected_status=422,
+    )
+    assert over_quantity.json()["code"] == "validation_error"
+
     over_credit = await _create_credit_note(
         client,
         h,
         product_id=product["id"],
         original_receipt_id=receipt_id,
-        quantity="4",
+        quantity="1",
+        unit_price="100.00",
+        restock=False,
         expected_status=422,
     )
     assert over_credit.json()["code"] == "validation_error"
+
+    bad_cash = await _create_credit_note(
+        client,
+        h,
+        product_id=product["id"],
+        original_receipt_id=receipt_id,
+        cash_account_code="4000",
+    )
+    bad_cash_note = bad_cash.json()["credit_note"]
+    bad_cash_posted = await _approve(client, h, bad_cash_note["id"])
+    assert bad_cash_posted["status"] == "approved"
+    assert (
+        bad_cash_posted["posting_error"]["code"] == "invalid_cash_account"
+    )
 
 
 async def test_sales_validation_and_rbac(
@@ -378,19 +414,36 @@ async def test_sales_validation_and_rbac(
                     "product_id": product["id"],
                     "quantity": "1",
                     "unit_price": "25.50",
-                    "unit_cost": "10.00",
                 },
                 {
                     "product_id": product["id"],
                     "quantity": "2",
                     "unit_price": "25.50",
-                    "unit_cost": "10.00",
                 },
             ],
         },
         headers=h,
     )
     assert duplicate_lines.status_code == 422
+
+    cost_override = await client.post(
+        "/api/v1/sales",
+        json={
+            "customer_id": customer["id"],
+            "currency": "NGN",
+            "effective_at": _now(),
+            "lines": [
+                {
+                    "product_id": product["id"],
+                    "quantity": "1",
+                    "unit_price": "25.50",
+                    "unit_cost": "0.01",
+                }
+            ],
+        },
+        headers=h,
+    )
+    assert cost_override.status_code == 422
 
     receipt_on_receivable = await _create_sale(
         client,
@@ -435,6 +488,38 @@ async def test_sales_validation_and_rbac(
     )
     assert no_receipt_or_customer.status_code == 422
 
+    credit_cost_override = await client.post(
+        "/api/v1/sales/credit-notes",
+        json={
+            "effective_at": _now(),
+            "customer_id": customer["id"],
+            "currency": "NGN",
+            "restock": False,
+            "lines": [
+                {
+                    "quantity": "1",
+                    "unit_price": "5.00",
+                    "unit_cost": "0.01",
+                }
+            ],
+        },
+        headers=h,
+    )
+    assert credit_cost_override.status_code == 422
+
+    bad_cash_sale = await _create_sale(
+        client,
+        h,
+        customer_id=customer["id"],
+        product_id=product["id"],
+        cash_account_code="4000",
+    )
+    bad_cash_posted = await _approve(
+        client, h, bad_cash_sale.json()["sale"]["id"]
+    )
+    assert bad_cash_posted["status"] == "approved"
+    assert bad_cash_posted["posting_error"]["code"] == "invalid_cash_account"
+
     viewer = await make_member(reg["active_org_id"], "viewer")
     viewer_h = _h(viewer["token"])
     assert (await client.get("/api/v1/sales", headers=viewer_h)).status_code == 200
@@ -449,7 +534,6 @@ async def test_sales_validation_and_rbac(
                     "product_id": product["id"],
                     "quantity": "1",
                     "unit_price": "25.50",
-                    "unit_cost": "10.00",
                 }
             ],
         },

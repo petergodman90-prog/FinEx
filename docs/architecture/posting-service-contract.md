@@ -83,7 +83,7 @@ Sale rules:
 - `unit_cost` is the historical cost snapshot used for COGS and the stock
   movement. It may be zero, but it is required so a later product-cost change
   cannot rewrite history.
-- `payment.method` is `"cash"` (any immediately settling account, selected by
+- `payment.method` is `"cash"` (an active cash-flagged account selected by
   `cash_account_code`, default `1000`) or `"receivable"` (debit `1100` and
   create a customer receivable).
 - For `"receivable"`, `payment.due_on` (a date) is optional. A receipt cannot be
@@ -96,12 +96,14 @@ Sale rules:
 - If `proposals.amount` is set it must equal the sale line total. If
   `proposals.currency` is set it must equal `currency`.
 
-`POST /api/v1/sales` stages the same payload as a `sale` proposal. When a line
-omits `unit_price` or `unit_cost`, the API snapshots the product's current sale
-price or default cost before staging. It also checks that the customer and
-products are active, that each product appears once, and that current stock
-covers the requested quantities. Approval remains authoritative because stock
-can change between staging and posting.
+`POST /api/v1/sales` stages the same payload as a `sale` proposal. The HTTP
+surface accepts `unit_price` as an optional pricing override, but does not
+accept `unit_cost`: it always snapshots the product's current default cost so a
+client cannot understate COGS or inventory. It also checks that the customer
+and products are active, that each product appears once, and that current stock
+covers the requested quantities. A cash sale's `cash_account_code` must refer
+to an active account flagged as a cash account. Approval remains authoritative
+because stock can change between staging and posting.
 
 ### Credit note
 
@@ -131,10 +133,15 @@ Credit-note rules:
 - `customer_id` and `currency` may be omitted when `original_receipt_id` is
   present; they are inherited from the receipt and must match if supplied.
 - A note linked to a receipt may not exceed the receipt value not already
-  credited. A credit note may reference a receipt, never another credit note.
-- `restock: true` requires a product and a unit cost on every line. The HTTP
-  surface fills an omitted cost from the product master. The API can stage a
-  non-restocked note without a product.
+  credited. A credit note may reference a sale receipt, never a payment
+  receipt or another credit note. The original receipt must belong to a
+  completed sale; each credited product must be on that sale and the returned
+  quantity cannot exceed the unreturned quantity.
+- `restock: true` requires a product on every line. The posting service takes
+  the restock cost from the original sale line (or from the product master for
+  an unlinked note). Clients cannot supply `unit_cost`. The API can stage a
+  non-restocked note without a product. A refund's `cash_account_code` must be
+  an active cash-flagged account.
 - The journal debits revenue `4000` and credits the cash account; restocking
   also debits inventory `1200` and credits COGS `5000`. The credit note is a new
   document linked to the original receipt and does not edit historical records.
@@ -183,9 +190,9 @@ Expense rules:
   `salaries`/`payroll`/`wages` → `6200`, `marketing`/`advertising` → `6300`,
   `bad_debt` → `6400`, `bank_charges` → `6500`, `inventory_variance` → `6600`,
   and `other`/`operating` → `6000`.
-- `"cash"` credits the selected cash account. `"payable"` requires
-  `payment.supplier_id`, credits accounts payable `2000`, and creates a supplier
-  payable open item.
+- `"cash"` credits the selected cash account, which must be active and flagged
+  as a cash account. `"payable"` requires `payment.supplier_id`, credits
+  accounts payable `2000`, and creates a supplier payable open item.
 - `amount` must be positive and must equal `proposals.amount` and
   `proposals.currency` when those fields are set.
 
@@ -215,7 +222,8 @@ result.receipt_id
 ```
 
 `POST /api/v1/debts/{id}/settlements` stages the same operation as a
-`settlement` proposal. Its payload is:
+`settlement` proposal. The settlement's `cash_account_code` must refer to an
+active cash-flagged account. Its payload is:
 
 ```json
 {
@@ -241,7 +249,10 @@ Settlement rules:
   settlements are supported.
 - A `customer_receivable` settles as debit cash / credit `1100`. A
   `supplier_payable` settles as debit `2000` / credit cash.
-- The cash account is selected with `cash_account_code` (default `1000`).
+- The cash account is selected with `cash_account_code` (default `1000`) and
+  must be an active cash-flagged account.
+- Allocations lock the open-item row, so concurrent settlements cannot
+  over-settle the same balance.
 - Only a customer receivable may issue a receipt, and it requires a currency.
   The receipt is linked to the settlement journal entry; it does not create a
   second journal entry.

@@ -127,20 +127,26 @@ and email invitations for people who do not yet have a FinEx account.
 - `app/api/sales.py` exposes `GET/POST /api/v1/sales`,
   `GET /api/v1/sales/{id}`, `GET/POST /api/v1/sales/credit-notes`, and
   `GET /api/v1/sales/credit-notes/{id}`.
-- `POST /api/v1/sales` stages a `sale` proposal. A line may omit `unit_price`
-  or `unit_cost`; the product's current sale price or cost is snapshotted into
-  the proposal. The API rejects duplicate products, inactive references,
-  insufficient current stock, and totals that cannot be represented as the
-  proposal's two-decimal amount. Approval posts revenue, COGS, stock movements,
-  and either a receipt (cash) or a customer receivable (receivable).
+- `POST /api/v1/sales` stages a `sale` proposal. A line may omit `unit_price`;
+  the product's current sale price is snapshotted into the proposal. The line
+  cost is always taken from the product master and cannot be supplied by the
+  client, so a sale cannot understate COGS or inventory. The API rejects
+  duplicate products, inactive references, insufficient current stock, and
+  totals that cannot be represented as the proposal's two-decimal amount.
+  Approval posts revenue, COGS, stock movements, and either a receipt (cash) or
+  a customer receivable (receivable).
 - Sale responses flatten the proposal payload with customer/product names,
   line totals, payment terms, journal-entry id, and, once applied, the linked
   receipt or open-item id.
 - `POST /api/v1/sales/credit-notes` stages a `credit_note` proposal. A note may
   reference an original receipt, in which case customer and currency are
-  inherited and the uncredited receipt value is checked before staging.
-  Restocked lines require a product and default `unit_cost` from the product
-  master. Approval posts the refund and optional `return_in` stock movements.
+  inherited and the uncredited receipt value is checked before staging. A
+  receipt-linked note must belong to a completed sale, each product must be on
+  the original sale, and the returned quantity cannot exceed the unreturned
+  quantity. Restocked lines require a product; their cost comes from the
+  original sale line, or from the product master for an unlinked note. Clients
+  cannot supply `unit_cost`. Approval posts the refund and optional `return_in`
+  stock movements.
 - Credit-note responses surface the applied credit-note document id and number.
 - New RBAC permissions: `sales:read/write`. All roles may read; staff and above
   may write. Approval still requires `proposals:approve` (manager and above).

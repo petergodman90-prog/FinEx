@@ -39,10 +39,14 @@ async def _create_expense(
     due_on: str | None = None,
     category: str = "rent",
     title: str = "Office rent",
+    cash_account_code: str = "1000",
     idempotency_key: str | None = None,
     effective_at: str | None = None,
 ) -> dict:
-    payment: dict = {"method": method, "cash_account_code": "1000"}
+    payment: dict = {
+        "method": method,
+        "cash_account_code": cash_account_code,
+    }
     if supplier_id is not None:
         payment["supplier_id"] = supplier_id
     if due_on is not None:
@@ -170,6 +174,21 @@ async def test_supplier_and_cash_expense_flow(client, register_user, make_member
     )
     assert missing_supplier.status_code == 422
 
+    bad_cash = await _create_expense(
+        client,
+        h,
+        title="Wrong cash account",
+        amount="10.00",
+        cash_account_code="4000",
+    )
+    bad_cash_posted = await _approve(
+        client, h, bad_cash["expense"]["id"]
+    )
+    assert bad_cash_posted["status"] == "approved"
+    assert (
+        bad_cash_posted["posting_error"]["code"] == "invalid_cash_account"
+    )
+
 
 async def test_payable_expense_debt_and_settlement_flow(
     client, register_user
@@ -285,6 +304,26 @@ async def test_payable_expense_debt_and_settlement_flow(
     )
     assert bad_receipt.status_code == 422
 
+    bad_cash = await client.post(
+        f"/api/v1/debts/{debt['id']}/settlements",
+        json={
+            "amount": "1.00",
+            "currency": "NGN",
+            "effective_at": _now(),
+            "cash_account_code": "2000",
+            "idempotency_key": uuid.uuid4().hex,
+        },
+        headers=h,
+    )
+    assert bad_cash.status_code == 200, bad_cash.text
+    bad_cash_posted = await _approve(
+        client, h, bad_cash.json()["proposal"]["id"]
+    )
+    assert bad_cash_posted["status"] == "approved"
+    assert (
+        bad_cash_posted["posting_error"]["code"] == "invalid_cash_account"
+    )
+
     final = await client.post(
         f"/api/v1/debts/{debt['id']}/settlements",
         json={
@@ -318,3 +357,64 @@ async def test_payable_expense_debt_and_settlement_flow(
     summary_after = await client.get("/api/v1/debts/summary", headers=h)
     assert _d(summary_after.json()["total_payables"]) == Decimal("0")
     assert summary_after.json()["total_creditors"] == 0
+
+
+async def test_expenses_debts_tenant_isolation(client, register_user) -> None:
+    first = await register_user(org_name="Expense Org A")
+    first_h = _h(first["access_token"])
+    supplier = await _create_supplier(client, first_h)
+    created = await _create_expense(
+        client,
+        first_h,
+        title="Other tenant payable",
+        amount="25.00",
+        method="payable",
+        supplier_id=supplier["id"],
+        category="utilities",
+    )
+    await _approve(client, first_h, created["expense"]["id"])
+    debts = await client.get(
+        "/api/v1/debts",
+        params={"item_type": "supplier_payable"},
+        headers=first_h,
+    )
+    assert debts.status_code == 200, debts.text
+    debt = debts.json()["items"][0]
+
+    second = await register_user(org_name="Expense Org B")
+    second_h = _h(second["access_token"])
+
+    assert (
+        await client.get("/api/v1/suppliers", headers=second_h)
+    ).json()["total"] == 0
+    assert (
+        await client.get("/api/v1/expenses", headers=second_h)
+    ).json()["total"] == 0
+    assert (
+        await client.get("/api/v1/debts", headers=second_h)
+    ).json()["total"] == 0
+    assert (
+        await client.get(
+            f"/api/v1/expenses/{created['expense']['id']}", headers=second_h
+        )
+    ).status_code == 404
+    assert (
+        await client.get(f"/api/v1/debts/{debt['id']}", headers=second_h)
+    ).status_code == 404
+    assert (
+        await client.get(
+            f"/api/v1/suppliers/{supplier['id']}", headers=second_h
+        )
+    ).status_code == 404
+    assert (
+        await client.post(
+            f"/api/v1/debts/{debt['id']}/settlements",
+            json={
+                "amount": "1.00",
+                "currency": "NGN",
+                "effective_at": _now(),
+                "idempotency_key": uuid.uuid4().hex,
+            },
+            headers=second_h,
+        )
+    ).status_code == 404
