@@ -135,6 +135,29 @@ async def _original_sale_lines(
     session: AsyncSession, org_id: uuid.UUID, receipt: ledger_service.Receipt
 ) -> dict[uuid.UUID, tuple[Decimal, Decimal]] | None:
     """Return product quantity/cost snapshots for the sale behind a receipt."""
+    rows = await session.execute(
+        text(
+            """
+            SELECT product_id, -quantity_delta AS quantity, unit_cost
+            FROM ledger.stock_movements
+            WHERE org_id = CAST(:org AS uuid)
+              AND journal_entry_id = CAST(:entry AS uuid)
+              AND movement_type = 'sale'
+            """
+        ),
+        {"org": org_id, "entry": receipt.journal_entry_id},
+    )
+    lines: dict[uuid.UUID, tuple[Decimal, Decimal]] = {}
+    for row in rows:
+        lines[row.product_id] = (
+            _decimal(row.quantity),
+            _decimal(row.unit_cost),
+        )
+    if lines:
+        return lines
+
+    # Fallback for a sale without stock movements (for example a service
+    # line): the posting payload is the only remaining snapshot.
     proposal = await session.scalar(
         select(Proposal)
         .where(
@@ -148,7 +171,6 @@ async def _original_sale_lines(
     )
     if proposal is None:
         return None
-    lines: dict[uuid.UUID, tuple[Decimal, Decimal]] = {}
     for line in (proposal.payload or {}).get("lines") or []:
         product_id = _uuid_or_none(line.get("product_id"))
         if product_id is None:
@@ -157,7 +179,7 @@ async def _original_sale_lines(
             _decimal(line.get("quantity")),
             _decimal(line.get("unit_cost")),
         )
-    return lines
+    return lines or None
 
 
 async def _prior_credit_quantities(

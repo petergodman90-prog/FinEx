@@ -770,7 +770,30 @@ async def _original_sale_lines(
     org_id: uuid.UUID,
     journal_entry_id: uuid.UUID,
 ) -> dict[uuid.UUID, tuple[Decimal, Decimal]] | None:
-    row = (
+    rows = await session.execute(
+        text(
+            """
+            SELECT product_id, -quantity_delta AS quantity, unit_cost
+            FROM ledger.stock_movements
+            WHERE org_id = CAST(:org AS uuid)
+              AND journal_entry_id = CAST(:entry AS uuid)
+              AND movement_type = 'sale'
+            """
+        ),
+        {"org": org_id, "entry": journal_entry_id},
+    )
+    lines: dict[uuid.UUID, tuple[Decimal, Decimal]] = {}
+    for row in rows:
+        lines[row.product_id] = (
+            _quantize(row.quantity),
+            _quantize(row.unit_cost),
+        )
+    if lines:
+        return lines
+
+    # Fallback for a sale without stock movements (for example a service
+    # line): the posting payload is the only remaining snapshot.
+    proposal = (
         await session.execute(
             text(
                 """
@@ -787,10 +810,9 @@ async def _original_sale_lines(
             {"org": org_id, "entry": journal_entry_id},
         )
     ).one_or_none()
-    if row is None:
+    if proposal is None:
         return None
-    lines: dict[uuid.UUID, tuple[Decimal, Decimal]] = {}
-    for line in (row.payload or {}).get("lines") or []:
+    for line in (proposal.payload or {}).get("lines") or []:
         try:
             product_id = uuid.UUID(str(line.get("product_id")))
         except (ValueError, TypeError):
@@ -799,7 +821,7 @@ async def _original_sale_lines(
             _quantize(line.get("quantity") or 0),
             _quantize(line.get("unit_cost") or 0),
         )
-    return lines
+    return lines or None
 
 
 async def _prior_credit_quantities(
@@ -1356,6 +1378,7 @@ async def post_credit_note(
                     text(
                         """
                         SELECT id,
+                               journal_entry_id,
                                receipt_type::text AS receipt_type,
                                currency_code::text AS currency_code,
                                customer_id,
