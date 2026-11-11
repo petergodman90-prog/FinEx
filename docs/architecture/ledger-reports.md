@@ -65,6 +65,25 @@ returns quantity, book value and average unit cost per product, plus:
 A non-reconciled report must be treated as an error, not as a display rounding
 issue.
 
+## Receipt read models
+
+Receipts are immutable documents created by postings. Person A exposes them
+only through read models:
+
+- `list_receipts(org_id, receipt_type=..., customer_id=..., limit=..., offset=...)`
+  returns documents newest-first by receipt number plus the filtered total.
+- `get_receipt(org_id, receipt_id)` returns one document or `None`.
+- `get_receipt_lines(org_id, receipt_id)` joins the parent receipt to enforce
+  organisation scope, because receipt lines do not carry their own `org_id`.
+- `receipt_credit_note_total(org_id, receipt_id)` sums credit notes linked to
+  the original receipt.
+- `get_posting_documents(org_id, journal_entry_ids)` batches receipt and
+  open-item links for proposal read models.
+
+`receipt_type` is `receipt` for cash sales and settlement receipts, or
+`credit_note` for refunds. A credit note points at the original receipt through
+`credit_note_of_id`; posted documents are never edited or voided.
+
 ## Debt aging
 
 `debt_aging(item_type)` reads `ledger.v_open_item_balances` for either

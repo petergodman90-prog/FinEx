@@ -83,7 +83,7 @@ Sale rules:
 - `unit_cost` is the historical cost snapshot used for COGS and the stock
   movement. It may be zero, but it is required so a later product-cost change
   cannot rewrite history.
-- `payment.method` is `"cash"` (any immediately settling account, selected by
+- `payment.method` is `"cash"` (an active cash-flagged account selected by
   `cash_account_code`, default `1000`) or `"receivable"` (debit `1100` and
   create a customer receivable).
 - For `"receivable"`, `payment.due_on` (a date) is optional. A receipt cannot be
@@ -95,6 +95,58 @@ Sale rules:
   `4000`; when cost is positive, debit COGS `5000` and credit inventory `1200`.
 - If `proposals.amount` is set it must equal the sale line total. If
   `proposals.currency` is set it must equal `currency`.
+
+`POST /api/v1/sales` stages the same payload as a `sale` proposal. The HTTP
+surface accepts `unit_price` as an optional pricing override, but does not
+accept `unit_cost`: it always snapshots the product's current default cost so a
+client cannot understate COGS or inventory. It also checks that the customer
+and products are active, that each product appears once, and that current stock
+covers the requested quantities. A cash sale's `cash_account_code` must refer
+to an active account flagged as a cash account. Approval remains authoritative
+because stock can change between staging and posting.
+
+### Credit note
+
+```json
+{
+  "customer_id": "0f0b1d4e-7a2c-4f3e-9a1b-9c9f0a7d2e11",
+  "currency": "NGN",
+  "effective_at": "2026-10-23T09:00:00+01:00",
+  "original_receipt_id": "5d9e0c2a-4b6f-4f7e-8a1b-3c2d1e0f9a8b",
+  "restock": true,
+  "refund_method": "cash",
+  "notes": "Returned one item",
+  "lines": [
+    {
+      "product_id": "8a6d2c1f-3f4e-4b5a-8c7d-2e1f0a9b8c7d",
+      "quantity": "1",
+      "unit_price": "150.00",
+      "unit_cost": "100.00",
+      "description": "Blue shirt"
+    }
+  ]
+}
+```
+
+Credit-note rules:
+
+- `customer_id` and `currency` may be omitted when `original_receipt_id` is
+  present; they are inherited from the receipt and must match if supplied.
+- A note linked to a receipt may not exceed the receipt value not already
+  credited. A credit note may reference a sale receipt, never a payment
+  receipt or another credit note. The original receipt must belong to a
+  completed sale; each credited product must be on that sale and the returned
+  quantity cannot exceed the unreturned quantity.
+- `restock: true` requires a product on every line. The posting service takes
+  the restock cost from the original sale line (or from the product master for
+  an unlinked note). Clients cannot supply `unit_cost`. The API can stage a
+  non-restocked note without a product. A refund's `cash_account_code` must be
+  an active cash-flagged account.
+- The journal debits revenue `4000` and credits the cash account; restocking
+  also debits inventory `1200` and credits COGS `5000`. The credit note is a new
+  document linked to the original receipt and does not edit historical records.
+- `POST /api/v1/sales/credit-notes` stages the operation as a `credit_note`
+  proposal; approval posts it through `post_credit_note`.
 
 ### Expense
 
@@ -138,9 +190,9 @@ Expense rules:
   `salaries`/`payroll`/`wages` → `6200`, `marketing`/`advertising` → `6300`,
   `bad_debt` → `6400`, `bank_charges` → `6500`, `inventory_variance` → `6600`,
   and `other`/`operating` → `6000`.
-- `"cash"` credits the selected cash account. `"payable"` requires
-  `payment.supplier_id`, credits accounts payable `2000`, and creates a supplier
-  payable open item.
+- `"cash"` credits the selected cash account, which must be active and flagged
+  as a cash account. `"payable"` requires `payment.supplier_id`, credits
+  accounts payable `2000`, and creates a supplier payable open item.
 - `amount` must be positive and must equal `proposals.amount` and
   `proposals.currency` when those fields are set.
 
@@ -169,13 +221,38 @@ result.allocation_id
 result.receipt_id
 ```
 
+`POST /api/v1/debts/{id}/settlements` stages the same operation as a
+`settlement` proposal. The settlement's `cash_account_code` must refer to an
+active cash-flagged account. Its payload is:
+
+```json
+{
+  "open_item_id": "9f1b0d7a-3c42-4e58-9b6a-2d7c1e4f5a60",
+  "amount": "15.00",
+  "currency": "NGN",
+  "effective_at": "2026-10-22T12:00:00+01:00",
+  "cash_account_code": "1000",
+  "issue_receipt": false,
+  "notes": "Part payment"
+}
+```
+
+On approval, `post_proposal` dispatches `settlement` to `post_settlement`, which
+validates the declared amount/currency and delegates to `settle_open_item` with
+the proposal id as the idempotency key. The HTTP API also rejects a staged
+amount above the current outstanding balance before creating the proposal; the
+posting service checks it again at approval to close the race.
+
 Settlement rules:
 
 - `amount` must be positive and may not exceed the outstanding balance. Partial
   settlements are supported.
 - A `customer_receivable` settles as debit cash / credit `1100`. A
   `supplier_payable` settles as debit `2000` / credit cash.
-- The cash account is selected with `cash_account_code` (default `1000`).
+- The cash account is selected with `cash_account_code` (default `1000`) and
+  must be an active cash-flagged account.
+- Allocations lock the open-item row, so concurrent settlements cannot
+  over-settle the same balance.
 - Only a customer receivable may issue a receipt, and it requires a currency.
   The receipt is linked to the settlement journal entry; it does not create a
   second journal entry.
@@ -226,6 +303,44 @@ Opening stock debits inventory `1200` and credits opening equity `3000`, and
 posts one `opening_balance` stock movement per product. The total cost must be
 positive. Each product may appear only once.
 
+### Stock adjustment
+
+Stock adjustments stage as a `stock_adjustment` proposal from
+`POST /api/v1/inventory/adjustments`, or may call the posting service directly
+during setup/migration work:
+
+```json
+{
+  "direction": "out",
+  "effective_at": "2026-10-22T09:00:00+01:00",
+  "reason": "Damaged goods",
+  "memo": "Warehouse write-off",
+  "lines": [
+    {
+      "product_id": "8a6d2c1f-3f4e-4b5a-8c7d-2e1f0a9b8c7d",
+      "quantity": "3",
+      "unit_cost": "100.00",
+      "description": "Torn shirts"
+    }
+  ]
+}
+```
+
+The API fills an omitted line `unit_cost` with the product's current default
+cost before staging. At posting time `unit_cost` is required in the payload.
+
+Stock adjustment rules:
+
+- `direction` is `"in"` or `"out"`. `"in"` debits inventory `1200` and credits
+  inventory variance `6600`; `"out"` reverses those lines.
+- Lines post `adjustment_in` or `adjustment_out` stock movements. Outbound
+  quantities are negative and the database enforces non-negative stock.
+- `reason` is required. The total cost must be positive, equal to
+  `proposals.amount` when set, and limited to two decimal places because the
+  proposal header stores a two-decimal amount.
+- Each product may appear only once. Stock-changing proposals still require
+  approval by a user with `proposals:approve`.
+
 ### Manual proposals
 
 **Manual proposals are informational only and are never posted.** They have no
@@ -245,6 +360,7 @@ The posting service exposes setup operations that Person B can wrap in APIs:
 | `create_product` / `update_product` | Product master, default cost, reorder point |
 | `create_supplier` | Minimal payable counterparty (no PII) |
 | `post_opening_stock` | Opening inventory and its journal entry |
+| `post_stock_adjustment` | Inventory adjustment and its journal entry |
 
 The seeded chart contains 19 accounts:
 
@@ -314,9 +430,11 @@ result.journal_entry_id
 ```
 
 The service never commits. Person B's request transaction owns the commit. On
-success, store `result.journal_entry_id` on the proposal and set it to
-`applied`/posted. On failure, catch `PostingError`, keep the proposal approved,
-store `error.code`, `str(error)` and `error.retryable`, and expose retry.
+success, store `result.journal_entry_id` on the proposal, set `posted_at` to the
+approval-to-posting completion time, clear `posting_error`, and set the proposal
+to `applied`/posted. On failure, catch `PostingError`, keep the proposal
+approved, store `error.code`, `str(error)` and `error.retryable`, and expose
+retry.
 
 ## Approval-to-posting behaviour (MVP)
 
@@ -324,14 +442,57 @@ Posting is synchronous:
 
 1. approval succeeds and the proposal is `approved`;
 2. posting is attempted immediately in the same request;
-3. success records the journal-entry id and moves the proposal to `applied`;
-4. failure leaves the proposal `approved` with a posting error and a retry
-   action.
+3. success records the journal-entry id and `posted_at`, clears any previous
+   posting error, and moves the proposal to `applied`;
+4. failure leaves the proposal `approved` with a structured posting error and a
+   retry action.
 
 A retry is safe and idempotent; it either returns the original journal entry or
 performs the posting exactly once. The UI must only show **Posted** when a
 journal-entry id is present. Until then it shows **Approved — posting pending**
 or **Posting failed — retry**.
+
+### HTTP contract
+
+| Request | Permission | Result |
+| --- | --- | --- |
+| `POST /api/v1/proposals/{id}/approve` | `proposals:approve` | Approve and attempt posting immediately |
+| `POST /api/v1/proposals/{id}/retry-posting` | `proposals:approve` | Retry posting; replay an already-applied proposal |
+| `POST /api/v1/proposals/{id}/post` | `proposals:approve` | Hidden compatibility alias for `retry-posting` |
+
+The proposal response always includes `status`, `journal_entry_id`,
+`posted_at`, and `posting_error`:
+
+- success: HTTP 200, `status=applied`, non-null `journal_entry_id` and
+  `posted_at`, `posting_error=null`;
+- retryable failure: HTTP 200, `status=approved`, null `journal_entry_id` and
+  `posted_at`, `posting_error={code, message, retryable: true, details}`;
+- non-retryable failure: the same shape with `retryable: false`; retrying does
+  not write financial records or report the proposal as posted;
+- invalid state (pending/rejected/expired/manual): HTTP 409;
+- missing permission: HTTP 403; another organisation's proposal: HTTP 404.
+
+`posted_at` is the application-side completion timestamp. The ledger's
+`posting_events.posted_at` remains the authoritative financial posting time.
+
+### Statuses and queue filters
+
+Proposal statuses are `pending`, `approved`, `rejected`, `expired`, and
+`applied`. `applied` means the ledger entry exists; `approved` means the
+decision exists but posting has not succeeded (possibly with `posting_error`).
+
+The list endpoint's `status` filter is exact and single-valued. An **Approved**
+queue view must therefore include both `approved` and `applied` (for example by
+querying both statuses or extending the filter to accept a comma-separated
+list). It must not hide posted proposals behind the `approved` label alone.
+
+### Audit events
+
+Approval writes `proposal.approved`. A posting failure writes
+`proposal.posting_failed` with the structured error. A successful posting writes
+`proposal.applied` with the journal-entry id and whether the result was a
+replay. The proposal's `after_state` includes `journal_entry_id`, `posted_at`,
+and `posting_error`.
 
 ## Failure codes
 
@@ -344,6 +505,7 @@ or **Posting failed — retry**.
 | `cross_org` | no | Session organisation differs from posting organisation |
 | `unbalanced_entry` | no | Journal debits do not equal credits |
 | `insufficient_stock` | yes | Stock would go negative; restock and retry |
+| `invalid_stock_adjustment` / `invalid_opening_stock` | no | The proposed stock value is not positive |
 | `closed_period` | yes | Effective date is in a closed accounting period |
 | `already_reversed` | no | A different reversal already exists |
 | `manual_not_postable` | no | Manual proposals are informational only |

@@ -9,7 +9,19 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import auth, customers, dashboard, proposals, staff
+from app.api import (
+    auth,
+    customers,
+    dashboard,
+    debts,
+    expenses,
+    inventory,
+    products,
+    proposals,
+    sales,
+    staff,
+    suppliers,
+)
 from app.core.config import get_settings
 from app.core.db import assert_runtime_role_is_restricted, engine
 from app.core.logging_filter import install_pii_filter
@@ -90,6 +102,12 @@ def create_app() -> FastAPI:
     api.include_router(auth.router)
     api.include_router(customers.router)
     api.include_router(proposals.router)
+    api.include_router(expenses.router)
+    api.include_router(debts.router)
+    api.include_router(suppliers.router)
+    api.include_router(products.router)
+    api.include_router(inventory.router)
+    api.include_router(sales.router)
     api.include_router(dashboard.router)
     api.include_router(staff.router)
     app.include_router(api)

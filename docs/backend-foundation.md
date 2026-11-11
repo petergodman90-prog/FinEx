@@ -1,6 +1,6 @@
-# Backend Foundation (Layers 1–7)
+# Backend Foundation (Layers 1-10)
 
-Status: complete and tested (114 tests green). Deferred by design: AI assistant
+Status: complete and tested (132 tests green). Deferred by design: AI assistant
 NLU, WhatsApp ingestion, OCR/AI receipt extraction, advanced CRM analytics,
 and email invitations for people who do not yet have a FinEx account.
 
@@ -64,17 +64,94 @@ and email invitations for people who do not yet have a FinEx account.
   org-scoped aggregation under RLS.
 
 ### 5. Proposals & audit
-- `Proposal` model (status pending/approved/rejected/expired, spend amount,
-  `idempotency_hash`); partial unique index on
+- `Proposal` model (status pending/approved/rejected/expired/applied, spend
+  amount, `idempotency_hash`, `journal_entry_id`, `posted_at`,
+  `posting_error`); partial unique index on
   `(org_id, idempotency_hash) WHERE status='pending'`; create is idempotent
   (savepoint + conflict lookup).
 - `app/services/proposal_service.py`: 24h expiry sweep
   (`POST /api/v1/proposals/expire`), role allow-list + per-role spend caps
-  (`app/core/rbac.py`), decisions written to the audit log.
+  (`app/core/rbac.py`), decisions written to the audit log. Approval posts
+  synchronously through the posting service; success is `applied` with a
+  journal-entry id and `posted_at`, failure stays `approved` with
+  `posting_error`. Retry is `POST /api/v1/proposals/{id}/retry-posting`
+  (`/post` remains a hidden alias).
 - `app/models/audit_log.py` is append-only via a statement trigger; writes go
   through `app/services/audit_service.py`.
 
-### 6. Migration, roles, tests
+### 6. Expenses, suppliers & debts
+- `app/api/expenses.py`, `app/api/suppliers.py`, `app/api/debts.py` expose the
+  expenses, supplier reference, debt aging, and settlement surface.
+- `POST /api/v1/expenses` stages an `expense` proposal; approving it posts
+  through `posting_service.post_expense`. The response flattens the proposal
+  payload into `ExpenseOut`, including the resolved expense account, payment
+  method, supplier, due date, journal-entry id, and posting error.
+- `GET/POST /api/v1/suppliers` manage the minimal payable counterparty. There
+  is no contact PII in the ledger supplier record.
+- `GET /api/v1/debts`, `/debts/summary`, `/debts/aging`, `/{id}`, and
+  `/{id}/settlements` read `ledger.v_open_item_balances` with counterparty names
+  resolved from customers or suppliers.
+- `POST /api/v1/debts/{id}/settlements` stages a `settlement` proposal. The
+  posting service validates the outstanding balance again at approval, then
+  calls `settle_open_item`; partial settlements are supported.
+- New RBAC permissions: `expenses:read/write`, `suppliers:read/write`, and
+  `debts:read/write`. All roles may read; staff and above may write. Approval
+  still requires `proposals:approve` (manager and above).
+
+### 7. Products & inventory
+- `app/api/products.py` exposes `GET/POST /api/v1/products` and
+  `GET/PATCH /api/v1/products/{id}`. Product setup is a posting-service setup
+  call, not a financial posting. Updates cover sale price, default cost,
+  reorder point, and active status; SKU, name, and unit are immutable.
+- `app/api/inventory.py` exposes `GET /api/v1/inventory/stock-levels`,
+  `/stock-levels/{product_id}`, `/valuation`, and `/movements`. Stock levels use
+  products left-joined to movement aggregates, so zero-stock and reorder-due
+  products remain visible. Valuation reconciles movement book value against the
+  `1200` inventory account.
+- `POST /api/v1/inventory/opening-stock` stages an `opening_stock` proposal;
+  lines may omit `unit_cost`, in which case the product's current default cost
+  is used. Approval posts one `opening_balance` movement per product, debits
+  inventory, and credits opening equity.
+- `POST /api/v1/inventory/adjustments` stages a `stock_adjustment` proposal
+  with direction `in` or `out` and a required reason. Approval posts
+  `adjustment_in`/`adjustment_out` movements and balances inventory against the
+  `6600` inventory-variance account. Outbound proposals pre-check current stock;
+  the database still enforces non-negative stock at posting time.
+- Proposal totals are limited to two decimal places because the proposal header
+  stores a two-decimal amount. Both proposal types are listed and retrieved via
+  their `/opening-stock` and `/adjustments` collection endpoints.
+- New RBAC permissions: `inventory:read/write`. All roles may read; staff and
+  above may write. Stock-changing proposals still require manager approval.
+
+### 8. Sales & credit notes
+- `app/api/sales.py` exposes `GET/POST /api/v1/sales`,
+  `GET /api/v1/sales/{id}`, `GET/POST /api/v1/sales/credit-notes`, and
+  `GET /api/v1/sales/credit-notes/{id}`.
+- `POST /api/v1/sales` stages a `sale` proposal. A line may omit `unit_price`;
+  the product's current sale price is snapshotted into the proposal. The line
+  cost is always taken from the product master and cannot be supplied by the
+  client, so a sale cannot understate COGS or inventory. The API rejects
+  duplicate products, inactive references, insufficient current stock, and
+  totals that cannot be represented as the proposal's two-decimal amount.
+  Approval posts revenue, COGS, stock movements, and either a receipt (cash) or
+  a customer receivable (receivable).
+- Sale responses flatten the proposal payload with customer/product names,
+  line totals, payment terms, journal-entry id, and, once applied, the linked
+  receipt or open-item id.
+- `POST /api/v1/sales/credit-notes` stages a `credit_note` proposal. A note may
+  reference an original receipt, in which case customer and currency are
+  inherited and the uncredited receipt value is checked before staging. A
+  receipt-linked note must belong to a completed sale, each product must be on
+  the original sale, and the returned quantity cannot exceed the unreturned
+  quantity. Restocked lines require a product; their cost comes from the
+  original sale line, or from the product master for an unlinked note. Clients
+  cannot supply `unit_cost`. Approval posts the refund and optional `return_in`
+  stock movements.
+- Credit-note responses surface the applied credit-note document id and number.
+- New RBAC permissions: `sales:read/write`. All roles may read; staff and above
+  may write. Approval still requires `proposals:approve` (manager and above).
+
+### 9. Migration, roles, tests
 - `backend/migrations/versions/001_initial_schema.py`: all tables, RLS
   (`ENABLE` + `FORCE` + policies generated from `rls.py`), the append-only
   audit trigger, `CREATE ROLE finex_app` (NOSUPERUSER, NOBYPASSRLS, NOLOGIN)
@@ -88,15 +165,17 @@ and email invitations for people who do not yet have a FinEx account.
   memberships policy into read-own/read-org SELECT plus owner/admin-only
   INSERT/UPDATE/DELETE, blocking staff self-promotion.
 - `alembic check` is clean (models ↔ migration zero drift).
-- `backend/tests` (114 tests): auth flows, refresh rotation/revocation,
+- `backend/tests` (132 tests): auth flows, refresh rotation/revocation,
   customers CRUD/dedup/merge/permissions, proposal idempotency/caps/expiry,
-  dashboard metrics, RBAC matrix, staff lifecycle/invitations, crypto
-  (encrypt/blind index), RLS enabled+forced and cross-tenant isolation —
-  including behavioral checks that run as `SET ROLE finex_app`, ledger
-  posting/receipt isolation, safe views, cross-tenant posting rejection, and
-  posting idempotency.
+  dashboard metrics, expenses/suppliers/debts/settlements, product CRUD,
+  opening stock, stock adjustments/valuation, sales and credit notes, receipt
+  read models and ledger reports, RBAC matrix, staff lifecycle/invitations,
+  crypto (encrypt/blind index), RLS
+  enabled+forced and cross-tenant isolation — including behavioral checks that
+  run as `SET ROLE finex_app`, ledger posting/receipt isolation, safe views,
+  cross-tenant posting rejection, and posting idempotency.
 
-### 7. Staff & membership
+### 10. Staff & membership
 - `backend/migrations/versions/006_staff_membership.py` adds membership
   lifecycle status (`active`, `pending`, `suspended`), display-only job
   titles, department and manager links, plus tenant-scoped `departments` and

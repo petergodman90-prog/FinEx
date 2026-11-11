@@ -120,6 +120,29 @@ async def approve_proposal(
 
 
 @router.post(
+    "/{proposal_id}/retry-posting",
+    response_model=ProposalOut,
+    dependencies=[Depends(require_permission("proposals:approve"))],
+)
+@router.post(
+    "/{proposal_id}/post",
+    response_model=ProposalOut,
+    dependencies=[Depends(require_permission("proposals:approve"))],
+    include_in_schema=False,
+)
+async def retry_posting(
+    proposal_id: uuid.UUID,
+    user: TokenPayload = Depends(get_current_user),
+    session: AsyncSession = Depends(get_rls_session),
+) -> ProposalOut:
+    """Retry posting for an approved proposal. Safe to call repeatedly."""
+    proposal = await proposal_service.post_approved_proposal(
+        session, proposal_id, user
+    )
+    return proposal_service.serialize_proposal(proposal)
+
+
+@router.post(
     "/{proposal_id}/reject",
     response_model=ProposalOut,
     dependencies=[Depends(require_permission("proposals:approve"))],
