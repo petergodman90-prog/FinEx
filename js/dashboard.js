@@ -373,6 +373,7 @@ if (themeToggle) {
     const proposalApproverRoles = new Set(["owner", "admin", "manager"]);
     let messageTimer = null;
     let canApproveProposals = false;
+    let activeCurrency = "USD";
 
     function showMessage(text, kind) {
         if (!messageBox) {
@@ -402,10 +403,21 @@ if (themeToggle) {
         if (Number.isNaN(value)) {
             return "—";
         }
-        return `${value.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        })} ${currency || "USD"}`;
+        const code = String(currency || activeCurrency || "USD").toUpperCase();
+        try {
+            return new Intl.NumberFormat(undefined, {
+                style: "currency",
+                currency: code,
+                currencyDisplay: "narrowSymbol",
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value);
+        } catch (error) {
+            return `${value.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            })} ${code}`;
+        }
     }
 
     function formatDate(value) {
@@ -503,23 +515,41 @@ if (themeToggle) {
 
     async function loadMetrics() {
         const metrics = await API.request("/dashboard/metrics");
+        activeCurrency = String(
+            metrics.currency || activeCurrency || "USD"
+        ).toUpperCase();
+
         setText("live-customers", metrics.customers_total);
         setText("live-new-customers", metrics.customers_new_30d);
         setText("live-touchpoints", metrics.touchpoints_30d);
         setText("live-pending-proposals", metrics.proposals_pending);
+
+        const pendingAmount = Number(metrics.proposals_pending_amount || 0);
         setText(
             "live-pending-amount",
-            metrics.proposals_pending_amount
-                ? `${formatAmount(metrics.proposals_pending_amount, "USD")} awaiting approval`
+            pendingAmount > 0
+                ? `${formatAmount(metrics.proposals_pending_amount)} awaiting approval`
                 : "Awaiting approval"
         );
 
-        // Financial cards depend on ledger posting, which is not exposed yet.
-        ["total-revenue", "total-orders", "total-expenses", "net-profit",
-         "snapshot-revenue", "snapshot-expenses", "snapshot-profit",
-         "chart-total"].forEach(function (id) {
-            setText(id, "—");
-        });
+        // Every financial value below is read from the ledger-derived API.
+        // The browser only formats; it never recalculates a balance.
+        setText("total-revenue", formatAmount(metrics.revenue_total));
+        setText(
+            "total-orders",
+            Number(metrics.orders_total || 0).toLocaleString()
+        );
+        setText("total-expenses", formatAmount(metrics.expenses_total));
+        setText("net-profit", formatAmount(metrics.net_profit));
+        setText("snapshot-revenue", formatAmount(metrics.revenue_total));
+        setText("snapshot-expenses", formatAmount(metrics.expenses_total));
+        setText("snapshot-profit", formatAmount(metrics.net_profit));
+        setText("chart-total", formatAmount(metrics.revenue_total));
+        setText(
+            "live-receivables",
+            formatAmount(metrics.receivables_outstanding)
+        );
+        setText("live-payables", formatAmount(metrics.payables_outstanding));
     }
 
     async function decideProposal(proposal, decision) {
@@ -636,7 +666,7 @@ if (themeToggle) {
                         proposal_type: typeInput.value,
                         title: titleInput.value.trim(),
                         amount: amount ? Number(amount) : null,
-                        currency: amount ? "USD" : null
+                        currency: amount ? activeCurrency : null
                     })
                 });
                 proposalForm.reset();
@@ -879,8 +909,8 @@ if (themeToggle) {
         document.body.classList.contains("staff-page")
         || document.body.classList.contains("debts-debtors-page")
     ) {
-        // These workspaces are frontend-only demonstrations, but they still
-        // require an authenticated session to reach the application shell.
+        // These workspaces enforce their own data loading; this guard still
+        // ends the session when the HttpOnly access cookie is no longer valid.
         API.request("/auth/me").catch(function (error) {
             handleAuthError(error);
         });

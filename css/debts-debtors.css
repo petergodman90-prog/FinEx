@@ -156,10 +156,141 @@
 
 .debt-action-note {
     margin: -16px 0 22px auto;
-    max-width: 360px;
+    max-width: 420px;
     color: var(--text-muted);
     font-size: 11px;
     text-align: right;
+}
+
+.debt-action-note.is-error {
+    color: var(--red);
+}
+
+.debt-record-count {
+    margin: 0 0 10px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.debt-money-cell {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.debt-outstanding-cell {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.debt-overdue-note {
+    margin-top: 2px;
+    color: var(--red);
+    font-size: 10px;
+}
+
+.debt-settle-button {
+    padding: 6px 10px;
+    color: var(--green-light);
+    border-color: rgba(52, 211, 153, 0.28);
+    background: rgba(16, 185, 129, 0.08);
+    font-size: 11px;
+}
+
+.status-pill.status-open {
+    background: rgba(56, 189, 248, 0.12);
+    color: var(--blue);
+}
+
+.status-pill.status-partially-paid {
+    background: rgba(167, 139, 250, 0.13);
+    color: var(--purple);
+}
+
+.status-pill.status-overdue {
+    background: rgba(251, 113, 133, 0.12);
+    color: var(--red);
+}
+
+.status-pill.status-paid {
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-secondary);
+}
+
+.settlement-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0 12px;
+    margin-top: 18px;
+}
+
+.settlement-fields .form-group {
+    margin-bottom: 14px;
+}
+
+.settlement-fields .form-group:last-child {
+    grid-column: 1 / -1;
+}
+
+.settlement-receipt-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 2px 0 16px;
+    padding: 12px;
+    color: var(--text-secondary);
+    background: rgba(148, 163, 184, 0.055);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.settlement-receipt-toggle[hidden] {
+    display: none;
+}
+
+.settlement-receipt-toggle input {
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    accent-color: var(--green);
+}
+
+.settlement-receipt-toggle span {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.settlement-receipt-toggle strong {
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.settlement-receipt-toggle small {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.settlement-submit {
+    color: #effff8;
+    background: linear-gradient(180deg, rgba(52, 211, 153, 0.38), rgba(16, 185, 129, 0.32));
+    border-color: rgba(110, 231, 183, 0.58);
+}
+
+.settlement-submit:hover,
+.settlement-submit:focus-visible {
+    color: #effff8;
+    background: linear-gradient(180deg, rgba(110, 231, 183, 0.46), rgba(16, 185, 129, 0.42));
+    border-color: rgba(167, 243, 208, 0.72);
+}
+
+.settlement-submit:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+:root[data-theme="light"] .settlement-submit {
+    color: #064e3b;
 }
 
 /* Glass surfaces have solid fallbacks so text remains readable without blur support. */
@@ -307,8 +438,13 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .debt-record-filters {
+    .debt-record-filters,
+    .settlement-fields {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .settlement-fields .form-group:last-child {
+        grid-column: auto;
     }
 }
 

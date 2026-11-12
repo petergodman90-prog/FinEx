@@ -41,6 +41,7 @@ class DebtOut(BaseModel):
 
 
 class DebtSummaryOut(BaseModel):
+    currency: str = "USD"
     total_receivables: Decimal
     total_payables: Decimal
     total_outstanding: Decimal

@@ -29,6 +29,10 @@ def test_permission_matrix() -> None:
         assert not check_permission("viewer", f"{resource}:write")
         assert check_permission("staff", f"{resource}:write")
 
+    assert check_permission("viewer", "reports:read")
+    assert check_permission("staff", "dashboard:read")
+    assert not check_permission("viewer", "reports:write")
+
 
 def test_unknown_role_or_permission_denied() -> None:
     assert not check_permission("intern", "customers:read")

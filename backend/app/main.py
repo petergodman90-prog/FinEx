@@ -18,6 +18,7 @@ from app.api import (
     inventory,
     products,
     proposals,
+    reports,
     sales,
     staff,
     suppliers,
@@ -109,6 +110,7 @@ def create_app() -> FastAPI:
     api.include_router(inventory.router)
     api.include_router(sales.router)
     api.include_router(dashboard.router)
+    api.include_router(reports.router)
     api.include_router(staff.router)
     app.include_router(api)
 

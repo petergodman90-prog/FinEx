@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 
 def _h(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -36,4 +38,14 @@ async def test_dashboard_metrics(client, register_user) -> None:
     assert metrics["proposals_pending"] == 1
     assert metrics["proposals_pending_amount"] == "42.50"
     assert metrics["recent_touchpoints"][0]["customer_name"] == "Metric Co"
-    assert "revenue_30d" in metrics["upstream_pending"]
+
+    # A workspace with no posted ledger entries still receives zero-valued
+    # financial metrics in its configured currency.
+    assert metrics["currency"] == "USD"
+    assert Decimal(metrics["revenue_total"]) == Decimal("0")
+    assert Decimal(metrics["expenses_total"]) == Decimal("0")
+    assert Decimal(metrics["net_profit"]) == Decimal("0")
+    assert metrics["orders_total"] == 0
+    assert Decimal(metrics["receivables_outstanding"]) == Decimal("0")
+    assert Decimal(metrics["payables_outstanding"]) == Decimal("0")
+    assert metrics["upstream_pending"] == []

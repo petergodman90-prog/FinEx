@@ -62,8 +62,9 @@ PERMISSIONS: dict[str, set[Role]] = {
     "proposals:create": {Role.STAFF, Role.MANAGER, Role.ADMIN, Role.OWNER},
     "proposals:approve": {Role.MANAGER, Role.ADMIN, Role.OWNER},
     "proposals:expire": {Role.ADMIN, Role.OWNER},
-    # Dashboard
+    # Dashboard and ledger-derived reports
     "dashboard:read": {Role.VIEWER, Role.STAFF, Role.MANAGER, Role.ADMIN, Role.OWNER},
+    "reports:read": {Role.VIEWER, Role.STAFF, Role.MANAGER, Role.ADMIN, Role.OWNER},
     # Staff management
     "staff:read": {Role.MANAGER, Role.ADMIN, Role.OWNER},
     "staff:manage": {Role.ADMIN, Role.OWNER},
