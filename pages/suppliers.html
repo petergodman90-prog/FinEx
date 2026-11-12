@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FinEx | Suppliers</title>
+
+    <script>
+        (function () {
+            try {
+                var savedTheme = localStorage.getItem("finex-theme");
+                document.documentElement.dataset.theme =
+                    savedTheme === "light" || savedTheme === "dark"
+                        ? savedTheme
+                        : "dark";
+            } catch (error) {
+                document.documentElement.dataset.theme = "dark";
+            }
+        })();
+    </script>
+
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/financial-workspaces.css">
+</head>
+<body class="financial-page suppliers-page">
+    <div class="dashboard-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <img src="../assets/images/finex-logo.jpg" alt="FinEx Logo" class="brand-logo">
+                    <h2>FinEx</h2>
+                </div>
+                <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Collapse sidebar" aria-expanded="true" aria-controls="sidebar">
+                    <svg class="collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+            </div>
+
+            <p class="sidebar-section-title">Workspace</p>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <a href="dashboard.html" class="nav-link" aria-label="Dashboard">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-dashboard"></use></svg></span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+                <a href="debts-debtors.html" class="nav-link" aria-label="Debts &amp; Debtors">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-ledger"></use></svg></span>
+                    <span class="nav-label">Debts &amp; Debtors</span>
+                </a>
+                <a href="expenses.html" class="nav-link" aria-label="Expenses">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-expenses"></use></svg></span>
+                    <span class="nav-label">Expenses</span>
+                </a>
+                <a href="suppliers.html" class="nav-link active" aria-label="Suppliers" aria-current="page">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-businesses"></use></svg></span>
+                    <span class="nav-label">Suppliers</span>
+                </a>
+                <a href="reports.html" class="nav-link" aria-label="Reports">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-analytics"></use></svg></span>
+                    <span class="nav-label">Reports</span>
+                </a>
+                <a href="staff.html" class="nav-link" aria-label="Staff">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-staff"></use></svg></span>
+                    <span class="nav-label">Staff</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-bottom">
+                <a href="../index.html" class="nav-link logout-link" aria-label="Sign Out">
+                    <span class="nav-icon nav-icon--red" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-logout"></use></svg></span>
+                    <span class="nav-label">Sign Out</span>
+                </a>
+                <div class="sidebar-footer"><span class="sidebar-footer-mark" aria-hidden="true">F</span><span class="sidebar-footer-text">FinEx Business</span></div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="welcome-section">
+                <div class="finance-page-head">
+                    <div>
+                        <h1>Suppliers</h1>
+                        <p class="welcome-description">Reference records for the businesses you owe. Supplier payables are created by payable expenses.</p>
+                    </div>
+                    <div class="finance-page-actions">
+                        <button type="button" class="btn btn-primary" id="supplier-add-open" hidden>+ Add Supplier</button>
+                    </div>
+                </div>
+                <p class="finance-status" id="suppliers-status" role="status" aria-live="polite">Loading suppliers…</p>
+            </header>
+
+            <div class="finance-toolbar">
+                <div class="form-group">
+                    <label for="supplier-search">Search suppliers</label>
+                    <input type="search" class="form-control" id="supplier-search" placeholder="Name or code">
+                </div>
+                <div class="form-group">
+                    <label for="supplier-filter">Records</label>
+                    <select class="form-control" id="supplier-filter">
+                        <option value="active">Active only</option>
+                        <option value="all">All suppliers</option>
+                    </select>
+                </div>
+                <div class="finance-toolbar-spacer"></div>
+                <button type="button" class="setting-button" id="suppliers-refresh">Refresh</button>
+            </div>
+
+            <div class="finance-metrics" aria-label="Supplier summary">
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Matching Records</p>
+                    <p class="finance-metric-value" id="supplier-total">—</p>
+                    <p class="finance-metric-note">Suppliers for the current filter</p>
+                </article>
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Active</p>
+                    <p class="finance-metric-value" id="supplier-active">—</p>
+                    <p class="finance-metric-note">Available for payable expenses</p>
+                </article>
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Inactive</p>
+                    <p class="finance-metric-value" id="supplier-inactive">—</p>
+                    <p class="finance-metric-note">Retained for history</p>
+                </article>
+            </div>
+
+            <section class="panel finance-panel" aria-labelledby="supplier-records-title">
+                <div class="panel-header">
+                    <div>
+                        <h2 id="supplier-records-title">Supplier Directory</h2>
+                        <p>Minimal payable counterparties. Contact data stays in the CRM, not the ledger.</p>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="table-container">
+                        <table class="transactions-table" aria-label="Suppliers">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Supplier</th>
+                                    <th scope="col">Code</th>
+                                    <th scope="col">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="suppliers-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <dialog class="app-dialog finance-dialog finance-dialog--compact" id="supplier-dialog" aria-labelledby="supplier-dialog-title">
+        <form class="app-dialog-card" id="supplier-form">
+            <button type="button" class="app-dialog-close" id="supplier-dialog-close" aria-label="Close supplier dialog">&times;</button>
+            <span class="app-dialog-eyebrow">Supplier record</span>
+            <h2 id="supplier-dialog-title">Add a supplier</h2>
+            <p>Supplier records are used when a payable expense is approved.</p>
+
+            <div class="finance-form-grid">
+                <div class="form-group span-2">
+                    <label for="supplier-name">Supplier name</label>
+                    <input type="text" class="form-control" id="supplier-name" maxlength="200" required>
+                </div>
+                <div class="form-group span-2">
+                    <label for="supplier-code">Code (optional)</label>
+                    <input type="text" class="form-control" id="supplier-code" maxlength="50">
+                </div>
+            </div>
+
+            <p class="app-dialog-error" id="supplier-error" role="alert" hidden></p>
+            <div class="app-dialog-actions">
+                <button type="button" class="setting-button" id="supplier-cancel">Cancel</button>
+                <button type="submit" class="setting-button finance-submit" id="supplier-submit">Add supplier</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/finance-common.js"></script>
+    <script src="../js/dashboard.js"></script>
+    <script src="../js/suppliers.js"></script>
+</body>
+</html>

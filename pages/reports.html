@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FinEx | Financial Reports</title>
+
+    <script>
+        (function () {
+            try {
+                var savedTheme = localStorage.getItem("finex-theme");
+                document.documentElement.dataset.theme =
+                    savedTheme === "light" || savedTheme === "dark"
+                        ? savedTheme
+                        : "dark";
+            } catch (error) {
+                document.documentElement.dataset.theme = "dark";
+            }
+        })();
+    </script>
+
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/financial-workspaces.css">
+</head>
+<body class="financial-page reports-page">
+    <div class="dashboard-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <img src="../assets/images/finex-logo.jpg" alt="FinEx Logo" class="brand-logo">
+                    <h2>FinEx</h2>
+                </div>
+                <button
+                    type="button"
+                    class="sidebar-toggle"
+                    id="sidebar-toggle"
+                    aria-label="Collapse sidebar"
+                    aria-expanded="true"
+                    aria-controls="sidebar"
+                >
+                    <svg class="collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <path d="m15 18-6-6 6-6"/>
+                    </svg>
+                </button>
+            </div>
+
+            <p class="sidebar-section-title">Workspace</p>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <a href="dashboard.html" class="nav-link" aria-label="Dashboard">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-dashboard"></use></svg></span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+                <a href="debts-debtors.html" class="nav-link" aria-label="Debts &amp; Debtors">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-ledger"></use></svg></span>
+                    <span class="nav-label">Debts &amp; Debtors</span>
+                </a>
+                <a href="expenses.html" class="nav-link" aria-label="Expenses">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-expenses"></use></svg></span>
+                    <span class="nav-label">Expenses</span>
+                </a>
+                <a href="suppliers.html" class="nav-link" aria-label="Suppliers">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-businesses"></use></svg></span>
+                    <span class="nav-label">Suppliers</span>
+                </a>
+                <a href="reports.html" class="nav-link active" aria-label="Reports" aria-current="page">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-analytics"></use></svg></span>
+                    <span class="nav-label">Reports</span>
+                </a>
+                <a href="staff.html" class="nav-link" aria-label="Staff">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-staff"></use></svg></span>
+                    <span class="nav-label">Staff</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-bottom">
+                <a href="../index.html" class="nav-link logout-link" aria-label="Sign Out">
+                    <span class="nav-icon nav-icon--red" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                            <polyline points="16 17 21 12 16 7"/>
+                            <line x1="21" y1="12" x2="9" y2="12"/>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Sign Out</span>
+                </a>
+                <div class="sidebar-footer">
+                    <span class="sidebar-footer-mark" aria-hidden="true">F</span>
+                    <span class="sidebar-footer-text">FinEx Business</span>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="welcome-section">
+                <div class="finance-page-head">
+                    <div>
+                        <h1>Financial Reports</h1>
+                        <p class="welcome-description">Ledger-derived profit and loss, balance sheet, and trial balance.</p>
+                    </div>
+                    <div class="finance-page-actions">
+                        <button type="button" class="btn btn-primary" id="reports-refresh">
+                            Refresh Reports
+                        </button>
+                    </div>
+                </div>
+                <p class="finance-status" id="reports-status" role="status" aria-live="polite">Loading reports…</p>
+            </header>
+
+            <div class="finance-tabs" role="tablist" aria-label="Financial reports">
+                <button type="button" class="finance-tab is-active" role="tab" aria-selected="true" aria-controls="report-pl" id="reports-tab-pl" data-report-tab="pl">Profit &amp; Loss</button>
+                <button type="button" class="finance-tab" role="tab" aria-selected="false" aria-controls="report-bs" id="reports-tab-bs" data-report-tab="bs">Balance Sheet</button>
+                <button type="button" class="finance-tab" role="tab" aria-selected="false" aria-controls="report-tb" id="reports-tab-tb" data-report-tab="tb">Trial Balance</button>
+            </div>
+
+            <section class="finance-section" id="report-pl" role="tabpanel" aria-labelledby="reports-tab-pl">
+                <div class="finance-toolbar">
+                    <div class="form-group">
+                        <label for="pl-start">Period start</label>
+                        <input type="date" class="form-control" id="pl-start">
+                    </div>
+                    <div class="form-group">
+                        <label for="pl-end">Period end</label>
+                        <input type="date" class="form-control" id="pl-end">
+                    </div>
+                    <button type="button" class="btn btn-primary" id="pl-run">Run Report</button>
+                </div>
+
+                <div class="finance-metrics" aria-label="Profit and loss summary">
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Revenue</p>
+                        <p class="finance-metric-value" id="pl-revenue">—</p>
+                        <p class="finance-metric-note">Posted sales revenue</p>
+                    </article>
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Cost of Goods Sold</p>
+                        <p class="finance-metric-value" id="pl-cogs">—</p>
+                        <p class="finance-metric-note">Cost of sold stock</p>
+                    </article>
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Gross Profit</p>
+                        <p class="finance-metric-value" id="pl-gross">—</p>
+                        <p class="finance-metric-note">Revenue minus COGS</p>
+                    </article>
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Operating Expenses</p>
+                        <p class="finance-metric-value" id="pl-operating">—</p>
+                        <p class="finance-metric-note">Posted operating costs</p>
+                    </article>
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Net Profit</p>
+                        <p class="finance-metric-value" id="pl-net">—</p>
+                        <p class="finance-metric-note">Gross profit minus operating expenses</p>
+                    </article>
+                </div>
+
+                <div class="panel finance-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Revenue</h2>
+                            <p>Posted revenue accounts in the selected period.</p>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="table-container">
+                            <table class="transactions-table" aria-label="Revenue report lines">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Account</th>
+                                        <th scope="col">Type</th>
+                                        <th scope="col">Debit</th>
+                                        <th scope="col">Credit</th>
+                                        <th scope="col">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pl-revenue-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel finance-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Cost of Goods Sold</h2>
+                            <p>Posted cost-of-sales accounts in the selected period.</p>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="table-container">
+                            <table class="transactions-table" aria-label="Cost of goods sold report lines">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Account</th>
+                                        <th scope="col">Type</th>
+                                        <th scope="col">Debit</th>
+                                        <th scope="col">Credit</th>
+                                        <th scope="col">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pl-cogs-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel finance-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Operating Expenses</h2>
+                            <p>Posted operating-expense accounts in the selected period.</p>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="table-container">
+                            <table class="transactions-table" aria-label="Operating expenses report lines">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Account</th>
+                                        <th scope="col">Type</th>
+                                        <th scope="col">Debit</th>
+                                        <th scope="col">Credit</th>
+                                        <th scope="col">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pl-expense-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="finance-section" id="report-bs" role="tabpanel" aria-labelledby="reports-tab-bs" hidden>
+                <div class="finance-toolbar">
+                    <div class="form-group">
+                        <label for="bs-as-of">As of</label>
+                        <input type="date" class="form-control" id="bs-as-of">
+                    </div>
+                    <button type="button" class="btn btn-primary" id="bs-run">Run Report</button>
+                </div>
+
+                <div class="finance-metrics" aria-label="Balance sheet summary">
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Total Assets</p>
+                        <p class="finance-metric-value" id="bs-assets">—</p>
+                    </article>
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Total Liabilities</p>
+                        <p class="finance-metric-value" id="bs-liabilities">—</p>
+                    </article>
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Equity</p>
+                        <p class="finance-metric-value" id="bs-equity">—</p>
+                    </article>
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Current Earnings</p>
+                        <p class="finance-metric-value" id="bs-earnings">—</p>
+                    </article>
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Balance Check</p>
+                        <p class="finance-metric-value" id="bs-check">—</p>
+                        <p class="finance-metric-note">Assets equal liabilities plus equity</p>
+                    </article>
+                </div>
+
+                <div class="finance-kpi-banner" id="bs-banner">
+                    <span id="bs-banner-text">Balance sheet check unavailable.</span>
+                </div>
+
+                <div class="panel finance-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Assets</h2>
+                            <p>Ledger balances for asset accounts.</p>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="table-container">
+                            <table class="transactions-table" aria-label="Asset report lines">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Account</th>
+                                        <th scope="col">Type</th>
+                                        <th scope="col">Debit</th>
+                                        <th scope="col">Credit</th>
+                                        <th scope="col">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bs-assets-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel finance-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Liabilities</h2>
+                            <p>Ledger balances for liability accounts.</p>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="table-container">
+                            <table class="transactions-table" aria-label="Liability report lines">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Account</th>
+                                        <th scope="col">Type</th>
+                                        <th scope="col">Debit</th>
+                                        <th scope="col">Credit</th>
+                                        <th scope="col">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bs-liabilities-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel finance-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Equity</h2>
+                            <p>Ledger balances for equity accounts, plus current earnings.</p>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="table-container">
+                            <table class="transactions-table" aria-label="Equity report lines">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Account</th>
+                                        <th scope="col">Type</th>
+                                        <th scope="col">Debit</th>
+                                        <th scope="col">Credit</th>
+                                        <th scope="col">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bs-equity-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="finance-section" id="report-tb" role="tabpanel" aria-labelledby="reports-tab-tb" hidden>
+                <div class="finance-toolbar">
+                    <div class="finance-inline-note">The trial balance includes every posted ledger line for this workspace. Debit and credit totals must agree.</div>
+                </div>
+
+                <div class="finance-metrics" aria-label="Trial balance summary">
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Total Debits</p>
+                        <p class="finance-metric-value" id="tb-debits">—</p>
+                    </article>
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Total Credits</p>
+                        <p class="finance-metric-value" id="tb-credits">—</p>
+                    </article>
+                    <article class="finance-metric">
+                        <p class="finance-metric-label">Balance Check</p>
+                        <p class="finance-metric-value" id="tb-check">—</p>
+                        <p class="finance-metric-note">Debits equal credits</p>
+                    </article>
+                </div>
+
+                <div class="finance-kpi-banner" id="tb-banner">
+                    <span id="tb-banner-text">Trial balance check unavailable.</span>
+                </div>
+
+                <div class="panel finance-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Trial Balance</h2>
+                            <p>Posted debit and credit totals by account.</p>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="table-container">
+                            <table class="transactions-table" aria-label="Trial balance rows">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Account</th>
+                                        <th scope="col">Type</th>
+                                        <th scope="col">Debit</th>
+                                        <th scope="col">Credit</th>
+                                        <th scope="col">Net Debit Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tb-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/finance-common.js"></script>
+    <script src="../js/dashboard.js"></script>
+    <script src="../js/reports.js"></script>
+</body>
+</html>

@@ -369,9 +369,13 @@ async def me(session: AsyncSession, actor: TokenPayload) -> MeResponse:
         raise AuthenticationError("Account is not active")
     memberships = await _load_memberships(session, user.id)
     active = _select_membership(memberships, actor.org_id)
+    currency = await session.scalar(
+        select(Organization.currency).where(Organization.id == active[0].org_id)
+    )
     return MeResponse(
         user=_user_out(user),
         active_org_id=active[0].org_id,
         role=active[0].role,
+        currency=currency or "USD",
         memberships=[_membership_out(m, n) for m, n in memberships],
     )

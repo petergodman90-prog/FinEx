@@ -57,3 +57,6 @@ class TrialBalanceRowOut(BaseModel):
 
 class TrialBalanceOut(BaseModel):
     rows: list[TrialBalanceRowOut]
+    total_debits: Decimal
+    total_credits: Decimal
+    is_balanced: bool

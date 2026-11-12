@@ -191,11 +191,11 @@ async def test_financial_reports_and_dashboard_metrics(
         "/api/v1/reports/trial-balance", headers=h
     )
     assert trial_response.status_code == 200, trial_response.text
-    trial_rows = trial_response.json()["rows"]
+    trial = trial_response.json()
+    trial_rows = trial["rows"]
     assert trial_rows
-    assert sum((_d(row["debit_total"]) for row in trial_rows), Decimal("0")) == sum(
-        (_d(row["credit_total"]) for row in trial_rows), Decimal("0")
-    )
+    assert _d(trial["total_debits"]) == _d(trial["total_credits"])
+    assert trial["is_balanced"] is True
     assert sum(
         (_d(row["net_debit_balance"]) for row in trial_rows), Decimal("0")
     ) == Decimal("0")

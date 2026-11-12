@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FinEx | Expenses</title>
+
+    <script>
+        (function () {
+            try {
+                var savedTheme = localStorage.getItem("finex-theme");
+                document.documentElement.dataset.theme =
+                    savedTheme === "light" || savedTheme === "dark"
+                        ? savedTheme
+                        : "dark";
+            } catch (error) {
+                document.documentElement.dataset.theme = "dark";
+            }
+        })();
+    </script>
+
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/financial-workspaces.css">
+</head>
+<body class="financial-page expenses-page">
+    <div class="dashboard-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <img src="../assets/images/finex-logo.jpg" alt="FinEx Logo" class="brand-logo">
+                    <h2>FinEx</h2>
+                </div>
+                <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Collapse sidebar" aria-expanded="true" aria-controls="sidebar">
+                    <svg class="collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+            </div>
+
+            <p class="sidebar-section-title">Workspace</p>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <a href="dashboard.html" class="nav-link" aria-label="Dashboard">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-dashboard"></use></svg></span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+                <a href="debts-debtors.html" class="nav-link" aria-label="Debts &amp; Debtors">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-ledger"></use></svg></span>
+                    <span class="nav-label">Debts &amp; Debtors</span>
+                </a>
+                <a href="expenses.html" class="nav-link active" aria-label="Expenses" aria-current="page">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-expenses"></use></svg></span>
+                    <span class="nav-label">Expenses</span>
+                </a>
+                <a href="suppliers.html" class="nav-link" aria-label="Suppliers">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-businesses"></use></svg></span>
+                    <span class="nav-label">Suppliers</span>
+                </a>
+                <a href="reports.html" class="nav-link" aria-label="Reports">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-analytics"></use></svg></span>
+                    <span class="nav-label">Reports</span>
+                </a>
+                <a href="staff.html" class="nav-link" aria-label="Staff">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-staff"></use></svg></span>
+                    <span class="nav-label">Staff</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-bottom">
+                <a href="../index.html" class="nav-link logout-link" aria-label="Sign Out">
+                    <span class="nav-icon nav-icon--red" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-logout"></use></svg></span>
+                    <span class="nav-label">Sign Out</span>
+                </a>
+                <div class="sidebar-footer"><span class="sidebar-footer-mark" aria-hidden="true">F</span><span class="sidebar-footer-text">FinEx Business</span></div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="welcome-section">
+                <div class="finance-page-head">
+                    <div>
+                        <h1>Expenses</h1>
+                        <p class="welcome-description">Stage operating costs for approval. Approved expenses post to the immutable ledger.</p>
+                    </div>
+                    <div class="finance-page-actions">
+                        <button type="button" class="btn btn-primary" id="expense-add-open" hidden>+ Record Expense</button>
+                    </div>
+                </div>
+                <p class="finance-status" id="expenses-status" role="status" aria-live="polite">Loading expenses…</p>
+            </header>
+
+            <div class="finance-toolbar">
+                <div class="form-group">
+                    <label for="expense-status-filter">Status</label>
+                    <select class="form-control" id="expense-status-filter">
+                        <option value="">All statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="applied">Posted</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="expired">Expired</option>
+                    </select>
+                </div>
+                <div class="finance-toolbar-spacer"></div>
+                <button type="button" class="setting-button" id="expenses-refresh">Refresh</button>
+            </div>
+
+            <div class="finance-metrics" aria-label="Expense summary">
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Matching Records</p>
+                    <p class="finance-metric-value" id="expense-total">—</p>
+                    <p class="finance-metric-note">Records for the current filter</p>
+                </article>
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Pending Approval</p>
+                    <p class="finance-metric-value" id="expense-pending">—</p>
+                    <p class="finance-metric-note">Awaiting a manager decision</p>
+                </article>
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Posted</p>
+                    <p class="finance-metric-value" id="expense-applied">—</p>
+                    <p class="finance-metric-note">Expenses recorded in the ledger</p>
+                </article>
+            </div>
+
+            <section class="panel finance-panel" aria-labelledby="expense-records-title">
+                <div class="panel-header">
+                    <div>
+                        <h2 id="expense-records-title">Expense Records</h2>
+                        <p>Cash and payable expenses, including staged and posted proposals.</p>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="table-container">
+                        <table class="transactions-table" aria-label="Expense records">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Expense</th>
+                                    <th scope="col">Vendor / Supplier</th>
+                                    <th scope="col">Category</th>
+                                    <th scope="col">Effective</th>
+                                    <th scope="col">Payment</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody id="expenses-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <dialog class="app-dialog finance-dialog finance-dialog--compact" id="expense-dialog" aria-labelledby="expense-dialog-title">
+        <form class="app-dialog-card" id="expense-form">
+            <button type="button" class="app-dialog-close" id="expense-dialog-close" aria-label="Close expense dialog">&times;</button>
+            <span class="app-dialog-eyebrow">Expense proposal</span>
+            <h2 id="expense-dialog-title">Record an expense</h2>
+            <p>Staging creates a proposal. A manager or administrator must approve it before the expense is posted.</p>
+
+            <div class="finance-form-grid">
+                <div class="form-group span-2">
+                    <label for="expense-title">Title</label>
+                    <input type="text" class="form-control" id="expense-title" maxlength="200" required>
+                </div>
+                <div class="form-group">
+                    <label for="expense-amount">Amount</label>
+                    <input type="number" class="form-control" id="expense-amount" min="0.01" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="expense-currency">Currency</label>
+                    <input type="text" class="form-control" id="expense-currency" minlength="3" maxlength="3" required>
+                </div>
+                <div class="form-group">
+                    <label for="expense-effective">Effective date and time</label>
+                    <input type="datetime-local" class="form-control" id="expense-effective" required>
+                </div>
+                <div class="form-group">
+                    <label for="expense-category">Category</label>
+                    <select class="form-control" id="expense-category">
+                        <option value="operating">Operating</option>
+                        <option value="rent">Rent</option>
+                        <option value="utilities">Utilities</option>
+                        <option value="salaries">Salaries</option>
+                        <option value="marketing">Marketing</option>
+                        <option value="bad_debt">Bad debt</option>
+                        <option value="bank_charges">Bank charges</option>
+                        <option value="inventory_variance">Inventory variance</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="expense-vendor">Vendor (optional)</label>
+                    <input type="text" class="form-control" id="expense-vendor" maxlength="200">
+                </div>
+                <div class="form-group">
+                    <label for="expense-payment-method">Payment method</label>
+                    <select class="form-control" id="expense-payment-method">
+                        <option value="cash">Cash</option>
+                        <option value="payable">Payable</option>
+                    </select>
+                </div>
+                <div class="form-group" id="expense-cash-group">
+                    <label for="expense-cash-account">Cash account code</label>
+                    <input type="text" class="form-control" id="expense-cash-account" value="1000" maxlength="20">
+                </div>
+                <div class="form-group" id="expense-supplier-group" hidden>
+                    <label for="expense-supplier">Supplier</label>
+                    <select class="form-control" id="expense-supplier"></select>
+                </div>
+                <div class="form-group" id="expense-due-group" hidden>
+                    <label for="expense-due-on">Due date</label>
+                    <input type="date" class="form-control" id="expense-due-on">
+                </div>
+                <div class="form-group span-2">
+                    <label for="expense-description">Description (optional)</label>
+                    <textarea class="form-control" id="expense-description" rows="3" maxlength="2000"></textarea>
+                </div>
+            </div>
+
+            <p class="app-dialog-error" id="expense-error" role="alert" hidden></p>
+            <div class="app-dialog-actions">
+                <button type="button" class="setting-button" id="expense-cancel">Cancel</button>
+                <button type="submit" class="setting-button finance-submit" id="expense-submit">Stage expense</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/finance-common.js"></script>
+    <script src="../js/dashboard.js"></script>
+    <script src="../js/expenses.js"></script>
+</body>
+</html>

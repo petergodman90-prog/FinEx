@@ -44,6 +44,7 @@ async def test_register_login_me_logout(client, register_user) -> None:
     assert me.status_code == 200, me.text
     body = me.json()
     assert body["user"]["full_name"] == "Alice Founder"
+    assert body["currency"] == "USD"
     assert len(body["memberships"]) == 1
     assert body["memberships"][0]["role"] == "owner"
 

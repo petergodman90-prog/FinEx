@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -149,6 +150,14 @@ async def get_trial_balance(
     session: AsyncSession = Depends(get_rls_session),
 ) -> TrialBalanceOut:
     rows = await ledger_service.trial_balance(session, user.org_id)
+    total_debits = sum(
+        (row.debit_total for row in rows),
+        Decimal("0"),
+    )
+    total_credits = sum(
+        (row.credit_total for row in rows),
+        Decimal("0"),
+    )
     return TrialBalanceOut(
         rows=[
             TrialBalanceRowOut(
@@ -161,5 +170,8 @@ async def get_trial_balance(
                 net_debit_balance=row.net_debit_balance,
             )
             for row in rows
-        ]
+        ],
+        total_debits=total_debits,
+        total_credits=total_credits,
+        is_balanced=total_debits == total_credits,
     )

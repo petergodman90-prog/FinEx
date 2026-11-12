@@ -908,6 +908,7 @@ if (themeToggle) {
     } else if (
         document.body.classList.contains("staff-page")
         || document.body.classList.contains("debts-debtors-page")
+        || document.body.classList.contains("financial-page")
     ) {
         // These workspaces enforce their own data loading; this guard still
         // ends the session when the HttpOnly access cookie is no longer valid.

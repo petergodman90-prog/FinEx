@@ -107,4 +107,5 @@ class MeResponse(BaseModel):
     user: UserOut
     active_org_id: uuid.UUID
     role: str
+    currency: str = "USD"
     memberships: list[MembershipOut]
