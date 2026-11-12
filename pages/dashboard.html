@@ -84,7 +84,7 @@
                     <span class="nav-label">Dashboard</span>
                 </a>
 
-                <a href="#sales" class="nav-link">
+                <a href="sales.html" class="nav-link">
                     <span class="nav-icon nav-icon--emerald">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
@@ -94,7 +94,7 @@
                     <span class="nav-label">Sales</span>
                 </a>
 
-                <a href="#transactions" class="nav-link">
+                <a href="credit-notes.html" class="nav-link">
                     <span class="nav-icon nav-icon--cyan">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="m17 3 4 4-4 4"/>
@@ -103,7 +103,7 @@
                             <path d="M3 17h12a4 4 0 0 0 0-8h-1"/>
                         </svg>
                     </span>
-                    <span class="nav-label">Transactions</span>
+                    <span class="nav-label">Credit Notes</span>
                 </a>
 
                 <button
@@ -130,7 +130,7 @@
 
                 <div class="products-stock-submenu" id="products-stock-submenu" hidden>
 
-                    <a href="#products" class="nav-link submenu-link">
+                    <a href="inventory.html#products" class="nav-link submenu-link">
                         <span class="nav-icon nav-icon--purple">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <path d="m12 2 9 5-9 5-9-5 9-5Z"/>
@@ -141,7 +141,7 @@
                         <span class="nav-label">All Products</span>
                     </a>
 
-                    <a href="#stock-adjustment" class="nav-link submenu-link">
+                    <a href="inventory.html?action=adjustment" class="nav-link submenu-link">
                         <span class="nav-icon nav-icon--cyan">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <line x1="4" y1="21" x2="4" y2="14"/>
@@ -304,28 +304,6 @@
                     </a>
 
                 </div>
-
-                <a href="#expenses" class="nav-link">
-                    <span class="nav-icon nav-icon--blue">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/>
-                            <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>
-                        </svg>
-                    </span>
-                    <span class="nav-label">Expenses</span>
-                </a>
-
-                <a href="#analytics" class="nav-link">
-                    <span class="nav-icon nav-icon--purple">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M3 3v18h18"/>
-                            <path d="M7 16v-5"/>
-                            <path d="M12 16V8"/>
-                            <path d="M17 16v-2"/>
-                        </svg>
-                    </span>
-                    <span class="nav-label">Analytics</span>
-                </a>
 
             </nav>
 
@@ -896,37 +874,46 @@
 
                 <div class="section-heading">
                     <h3>Quick Actions</h3>
-                    <p>Available when financial posting and product setup are connected.</p>
+                    <p>Jump into a live financial workspace.</p>
                 </div>
 
                 <div class="quick-actions-grid">
 
-                    <button type="button" class="quick-action" data-action="sale" disabled title="Sales posting is not connected yet.">
+                    <a class="quick-action" href="sales.html?action=sale">
                         <span class="quick-action-icon">＋</span>
                         <span>
                             <strong>Record a Sale</strong>
-                            <small>Coming soon</small>
+                            <small>Stage a cash or receivable sale</small>
                         </span>
                         <span class="action-arrow">→</span>
-                    </button>
+                    </a>
 
-                    <button type="button" class="quick-action" data-action="expense" disabled title="Expense posting is not connected yet.">
+                    <a class="quick-action" href="expenses.html?action=expense">
                         <span class="quick-action-icon expense-action-icon">↘</span>
                         <span>
                             <strong>Add Expense</strong>
-                            <small>Coming soon</small>
+                            <small>Stage a cash or payable expense</small>
                         </span>
                         <span class="action-arrow">→</span>
-                    </button>
+                    </a>
 
-                    <button type="button" class="quick-action" data-action="product" disabled title="Product setup is not connected yet.">
+                    <a class="quick-action" href="inventory.html?action=product">
                         <span class="quick-action-icon product-action-icon">▤</span>
                         <span>
                             <strong>Add Product</strong>
-                            <small>Coming soon</small>
+                            <small>Create a product and stock record</small>
                         </span>
                         <span class="action-arrow">→</span>
-                    </button>
+                    </a>
+
+                    <a class="quick-action" href="reports.html">
+                        <span class="quick-action-icon">▦</span>
+                        <span>
+                            <strong>View Reports</strong>
+                            <small>Open ledger-derived statements</small>
+                        </span>
+                        <span class="action-arrow">→</span>
+                    </a>
 
                 </div>
 
