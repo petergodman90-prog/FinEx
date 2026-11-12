@@ -505,7 +505,7 @@
                     <h3 id="total-expenses">₦0.00</h3>
 
                     <div class="card-bottom">
-                        <span class="card-caption">Business expenses</span>
+                        <span class="card-caption">Cost of goods and operating expenses</span>
                     </div>
 
                 </article>
@@ -521,7 +521,7 @@
                     <h3 id="net-profit">₦0.00</h3>
 
                     <div class="card-bottom">
-                        <span class="card-caption">Revenue minus expenses</span>
+                        <span class="card-caption">Revenue minus costs and expenses</span>
                     </div>
 
                 </article>
@@ -579,6 +579,28 @@
                         <span class="card-caption" id="live-pending-amount">
                             Awaiting approval
                         </span>
+                    </div>
+                </article>
+
+                <article class="summary-card">
+                    <div class="card-top">
+                        <span class="card-label">Receivables</span>
+                        <span class="card-icon revenue-icon">↗</span>
+                    </div>
+                    <h3 id="live-receivables">—</h3>
+                    <div class="card-bottom">
+                        <span class="card-caption">Outstanding customer balances</span>
+                    </div>
+                </article>
+
+                <article class="summary-card">
+                    <div class="card-top">
+                        <span class="card-label">Payables</span>
+                        <span class="card-icon expenses-icon">↘</span>
+                    </div>
+                    <h3 id="live-payables">—</h3>
+                    <div class="card-bottom">
+                        <span class="card-caption">Outstanding supplier balances</span>
                     </div>
                 </article>
 
@@ -643,7 +665,7 @@
 
                         <div>
                             <h3>Sales Overview</h3>
-                            <p>Live revenue appears after ledger postings are connected.</p>
+                            <p>Posted revenue from the immutable ledger.</p>
                         </div>
 
                         <select id="sales-period" aria-label="Sales chart period" disabled>
@@ -656,7 +678,7 @@
 
                     <div class="chart-summary">
                         <h2 id="chart-total">₦0.00</h2>
-                        <span>Revenue for selected period</span>
+                        <span>All posted revenue</span>
                     </div>
 
                     <div class="chart-container" id="sales-chart">
@@ -700,8 +722,8 @@
                         </svg>
 
                         <div class="chart-empty-state">
-                            <strong>No posted revenue yet</strong>
-                            <span>Figures come from the ledger posting service.<br>They are never recalculated in the browser.</span>
+                            <strong>Daily chart not available yet</strong>
+                            <span>Totals come from the ledger posting service.<br>They are never recalculated in the browser.</span>
                         </div>
 
                     </div>

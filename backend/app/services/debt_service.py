@@ -6,9 +6,11 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import TokenPayload
+from app.models.organization import Organization
 from app.schemas.debt import (
     AgingBucketOut,
     DebtAgingOut,
@@ -105,7 +107,11 @@ async def get_summary(
     session: AsyncSession, org_id: uuid.UUID
 ) -> DebtSummaryOut:
     summary = await ledger_service.debt_summary(session, org_id)
+    currency = await session.scalar(
+        select(Organization.currency).where(Organization.id == org_id)
+    )
     return DebtSummaryOut(
+        currency=currency or "USD",
         total_receivables=summary.total_receivables,
         total_payables=summary.total_payables,
         total_outstanding=summary.total_outstanding,

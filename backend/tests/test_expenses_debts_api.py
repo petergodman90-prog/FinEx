@@ -225,6 +225,7 @@ async def test_payable_expense_debt_and_settlement_flow(
 
     summary = await client.get("/api/v1/debts/summary", headers=h)
     assert summary.status_code == 200, summary.text
+    assert summary.json()["currency"] == "USD"
     assert _d(summary.json()["total_payables"]) == Decimal("100")
     assert _d(summary.json()["overdue_payables"]) == Decimal("100")
     assert summary.json()["overdue_count"] == 1
