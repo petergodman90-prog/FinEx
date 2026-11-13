@@ -38,6 +38,7 @@ service; the UI displays backend-provided figures without recalculating them.
    alembic upgrade head
    uvicorn app.main:app --reload        # UI + API: http://127.0.0.1:8000/
    pytest -q                            # 141 tests; Postgres required, Redis faked
+   python tests/e2e_browser.py          # headless Chrome browser smoke test
    ```
 
 4. Open <http://127.0.0.1:8000/>. The backend serves `index.html` and only the
