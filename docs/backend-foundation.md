@@ -69,6 +69,10 @@ and email invitations for people who do not yet have a FinEx account.
   `posting_error`); partial unique index on
   `(org_id, idempotency_hash) WHERE status='pending'`; create is idempotent
   (savepoint + conflict lookup).
+- `POST /api/v1/proposals` only accepts generic `manual`, `expense`, and
+  `purchase` proposals. Domain financial types (`sale`, `credit_note`,
+  `opening_stock`, `stock_adjustment`, `settlement`, and similar) must use
+  their dedicated endpoints so domain validation cannot be bypassed.
 - `app/services/proposal_service.py`: 24h expiry sweep
   (`POST /api/v1/proposals/expire`), role allow-list + per-role spend caps
   (`app/core/rbac.py`), decisions written to the audit log. Separation of
