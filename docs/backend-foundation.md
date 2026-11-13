@@ -223,7 +223,7 @@ cd backend
 python -m venv .venv; .\.venv\Scripts\activate
 pip install -r requirements.txt -r requirements-dev.txt
 alembic upgrade head              # DB must be up: docker compose up -d
-uvicorn app.main:app --reload     # http://127.0.0.1:8000/health
+uvicorn app.main:app --reload     # http://127.0.0.1:8000/ (probes: /health, /ready)
 
 pytest -q                         # Postgres required; Redis is faked (fakeredis)
 python tests/e2e_browser.py       # headless Chrome + Postgres browser smoke test
@@ -232,6 +232,11 @@ python tests/e2e_browser.py       # headless Chrome + Postgres browser smoke tes
 The browser smoke test starts its own fakeredis-backed API server, seeds a
 disposable tenant, and verifies the manager self-approval suppression and
 credit-note restock states. CI runs it in the separate `browser` workflow.
+
+`/health` is the cheap liveness probe. `/ready` checks PostgreSQL and Redis and
+returns `503` when either dependency is unavailable, so load balancers should
+route traffic only after readiness succeeds. The production runbook covers the
+external monitoring and alerting that must consume these probes.
 
 ## Security invariants (enforced, not aspirational)
 - Every tenant table has RLS enabled + forced with the org policy; the app

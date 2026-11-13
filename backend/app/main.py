@@ -1,13 +1,16 @@
 """FINEX backend application factory."""
 
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from redis.exceptions import RedisError
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import (
     auth,
@@ -23,6 +26,7 @@ from app.api import (
     staff,
     suppliers,
 )
+from app.core import sessions
 from app.core.config import get_settings
 from app.core.db import assert_runtime_role_is_restricted, engine
 from app.core.logging_filter import install_pii_filter
@@ -116,9 +120,28 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
+        """Liveness probe: the process is up and serving requests.
+
+        Startup already fails fast when PostgreSQL is unreachable, so this does
+        not touch the network. Use ``/ready`` before routing traffic.
+        """
         return {"status": "ok"}
+
+    @app.get("/ready")
+    async def ready():
+        """Readiness probe: PostgreSQL and the shared Redis are reachable.
+
+        Authentication fails closed when Redis is unavailable, so a live
+        process without Redis must not receive traffic.
+        """
+        try:
+            async with asyncio.timeout(3):
+                async with engine.connect() as conn:
+                    await conn.execute(text("SELECT 1"))
+                await sessions.ping()
+        except (TimeoutError, SQLAlchemyError, RedisError, OSError) as exc:
+            raise HTTPException(status_code=503, detail="not ready") from exc
+        return {"status": "ready"}
 
     # Same-origin UI: only the public frontend directories are mounted. Never
     # mount the repository root, because it contains .env, backend/ and db/.
