@@ -282,6 +282,19 @@ async def _decide(
             "Proposal has expired and can no longer be decided"
         )
 
+    if (
+        approve
+        and actor.role == Role.MANAGER.value
+        and proposal.created_by_id == uuid.UUID(actor.sub)
+    ):
+        # Separation of duties: a manager cannot approve their own financial
+        # proposal. Owners and administrators retain self-approval so a
+        # single-owner workspace remains operable; every decision is audited.
+        raise PermissionDeniedError(
+            "Managers cannot approve proposals they created; ask an owner or administrator",
+            details={"proposal_id": str(proposal.id)},
+        )
+
     if approve:
         # A missing amount must never be treated as zero: otherwise a capped
         # approver could approve an arbitrarily large posting payload. Only an

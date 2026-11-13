@@ -379,6 +379,7 @@ async def _serialize_sales(
                 posting_error=dict(proposal.posting_error)
                 if proposal.posting_error is not None
                 else None,
+                created_by_id=proposal.created_by_id,
                 created_at=proposal.created_at,
                 updated_at=proposal.updated_at,
             )
@@ -456,6 +457,7 @@ async def _serialize_credit_notes(
                 posting_error=dict(proposal.posting_error)
                 if proposal.posting_error is not None
                 else None,
+                created_by_id=proposal.created_by_id,
                 created_at=proposal.created_at,
                 updated_at=proposal.updated_at,
             )

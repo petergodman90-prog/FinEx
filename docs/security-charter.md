@@ -14,6 +14,12 @@
 - AI reads only from ledger-derived views. No recalculation.
 - AI NEVER writes. It creates proposals only.
 - Proposals: 24h expiry, idempotency hash, audit log, role allow-list, spend cap.
+- Separation of duties: a manager cannot approve a proposal they created.
+  Owners and administrators may self-approve so a single-owner workspace stays
+  operable; the creator and decider are both recorded in the audit trail.
+- Financial values are server-derived. Sale COGS, credit-note restock costs,
+  and receipt caps are resolved from ledger or product data, never trusted from
+  a client payload. Unlinked credit notes cannot restock inventory.
 
 ## 4. WhatsApp
 - Verify Meta webhook signature.

@@ -143,6 +143,50 @@ async def test_proposal_spend_caps_and_permissions(
     assert owner_ok.status_code == 200
 
 
+async def test_manager_cannot_approve_own_proposal(
+    client, register_user, make_member
+) -> None:
+    reg = await register_user()
+    owner_h = _h(reg["access_token"])
+    manager = await make_member(reg["active_org_id"], "manager")
+    manager_h = _h(manager["token"])
+
+    created = await client.post(
+        "/api/v1/proposals",
+        json={
+            "proposal_type": "expense",
+            "title": "Manager's own expense",
+            "amount": "100.00",
+        },
+        headers=manager_h,
+    )
+    assert created.status_code == 200, created.text
+    proposal_id = created.json()["proposal"]["id"]
+
+    blocked = await client.post(
+        f"/api/v1/proposals/{proposal_id}/approve",
+        json={},
+        headers=manager_h,
+    )
+    assert blocked.status_code == 403
+    assert "cannot approve proposals they created" in blocked.json()["detail"]
+
+    pending = await client.get(
+        f"/api/v1/proposals/{proposal_id}", headers=manager_h
+    )
+    assert pending.json()["status"] == "pending"
+
+    # A different approver can still decide it.
+    approved = await client.post(
+        f"/api/v1/proposals/{proposal_id}/approve",
+        json={},
+        headers=owner_h,
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "approved"
+    assert approved.json()["decided_by_id"] == reg["user"]["id"]
+
+
 async def test_missing_amount_cannot_bypass_spend_cap(
     client, register_user, make_member
 ) -> None:

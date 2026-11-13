@@ -133,7 +133,11 @@ class SaleLineInput(_Payload):
     product_id: uuid.UUID
     quantity: Decimal = Field(gt=0, max_digits=19, decimal_places=4)
     unit_price: Decimal = Field(ge=0, max_digits=19, decimal_places=4)
-    unit_cost: Decimal = Field(ge=0, max_digits=19, decimal_places=4)
+    # Informational staging snapshot only. post_sale resolves COGS and the
+    # stock-movement cost from the product master and never trusts this value.
+    unit_cost: Decimal | None = Field(
+        default=None, ge=0, max_digits=19, decimal_places=4
+    )
     description: str | None = Field(default=None, max_length=500)
 
 
@@ -231,7 +235,9 @@ class CreditNoteLineInput(_Payload):
     product_id: uuid.UUID | None = None
     quantity: Decimal = Field(gt=0, max_digits=19, decimal_places=4)
     unit_price: Decimal = Field(ge=0, max_digits=19, decimal_places=4)
-    unit_cost: Decimal | None = Field(default=None, ge=0, max_digits=19, decimal_places=4)
+    unit_cost: Decimal | None = Field(
+        default=None, ge=0, max_digits=19, decimal_places=4
+    )
     description: str | None = Field(default=None, max_length=500)
 
 
@@ -1162,8 +1168,21 @@ async def post_sale(
             )
         _assert_declared_amount(revenue_total, declared_amount, label="sale")
 
+        # COGS is server-derived. The payload can carry a staging snapshot for
+        # display, but posting must never trust a client-supplied cost: a forged
+        # generic proposal could otherwise understate COGS and inventory.
+        sale_costs = {
+            line.product_id: products[line.product_id].current_cost
+            for line in sale.lines
+        }
         cogs_total = _quantize(
-            sum((line.quantity * line.unit_cost for line in sale.lines), Decimal("0"))
+            sum(
+                (
+                    line.quantity * sale_costs[line.product_id]
+                    for line in sale.lines
+                ),
+                Decimal("0"),
+            )
         )
 
         required = [SALES_REVENUE, INVENTORY, COGS]
@@ -1228,7 +1247,9 @@ async def post_sale(
                 "product_id": str(line.product_id),
                 "quantity": str(_quantize(line.quantity)),
                 "unit_price": str(_quantize(line.unit_price)),
-                "cogs_amount": str(_quantize(line.quantity * line.unit_cost)),
+                "cogs_amount": str(
+                    _quantize(line.quantity * sale_costs[line.product_id])
+                ),
             }
             for line in sale.lines
         ]
@@ -1260,7 +1281,7 @@ async def post_sale(
                     "product": line.product_id,
                     "entry": entry_id,
                     "quantity": _quantize(-line.quantity),
-                    "cost": _quantize(line.unit_cost),
+                    "cost": _quantize(sale_costs[line.product_id]),
                     "source": proposal_id,
                     "occurred": sale.effective_at,
                     "note": line.description or f"Sale of {product.sku}",
@@ -1503,6 +1524,14 @@ async def post_credit_note(
                     },
                 )
 
+        if credit.restock and credit.original_receipt_id is None:
+            # Without a receipt there is no historical sale to reverse. An
+            # unlinked restock would create inventory from thin air, so require
+            # a receipt-linked note for every stock return.
+            raise PostingValidationError(
+                "Restocking requires an original receipt",
+                code="unlinked_restock_not_allowed",
+            )
         if credit.restock and any(
             line.product_id is None for line in credit.lines
         ):

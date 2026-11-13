@@ -477,6 +477,8 @@ if (themeToggle) {
     }
 
     let activeWorkspaceId = "";
+    let activeUserId = "";
+    let activeRole = "";
 
     async function loadMe() {
         const me = await API.request("/auth/me");
@@ -484,6 +486,8 @@ if (themeToggle) {
         const email = me.user.email || "No email on file";
         const role = (me.role || "member").toLowerCase();
         const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+        activeUserId = String(me.user.id || "");
+        activeRole = role;
         canApproveProposals = proposalApproverRoles.has(role);
 
         setText("profile-name", fullName);
@@ -606,7 +610,12 @@ if (themeToggle) {
             statusCell.appendChild(pill);
 
             const actionCell = document.createElement("td");
-            if (proposal.status === "pending" && canApproveProposals) {
+            const selfApprovalBlocked = (
+                activeRole === "manager"
+                && proposal.created_by_id
+                && proposal.created_by_id === activeUserId
+            );
+            if (proposal.status === "pending" && canApproveProposals && !selfApprovalBlocked) {
                 const actions = document.createElement("div");
                 actions.className = "live-table-actions";
 
@@ -627,7 +636,9 @@ if (themeToggle) {
                 actions.append(approveButton, rejectButton);
                 actionCell.appendChild(actions);
             } else if (proposal.status === "pending") {
-                actionCell.textContent = "Authorised review required";
+                actionCell.textContent = selfApprovalBlocked
+                    ? "Another approver required"
+                    : "Authorised review required";
             } else {
                 actionCell.textContent = "—";
             }

@@ -475,6 +475,54 @@ async def test_sale_posts_one_balanced_entry_stock_and_receipt(org_factory) -> N
     assert await _counts(org) == after
 
 
+async def test_sale_cogs_is_server_derived_not_payload_cost(org_factory) -> None:
+    org = await org_factory("CostGuard")
+    product_id = await _create_product(org)
+    customer_id = await _create_customer(org)
+    await _add_opening_stock(org, product_id, "10")
+
+    sale = await _post_sale(
+        org,
+        uuid.uuid4(),
+        _sale_payload(
+            customer_id,
+            product_id,
+            quantity="2",
+            unit_price="20.00",
+            unit_cost="0.01",
+        ),
+    )
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            await _bind(session, org)
+            pnl = await ledger_service.profit_and_loss(
+                session,
+                org["org_id"],
+                start=date(2026, 1, 1),
+                end=date(2026, 1, 31),
+            )
+            movement = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT unit_cost
+                        FROM ledger.stock_movements
+                        WHERE id = CAST(:id AS uuid)
+                        """
+                    ),
+                    {"id": sale.stock_movement_ids[0]},
+                )
+            ).scalar_one()
+            stock = await ledger_service.stock_valuation(session, org["org_id"])
+
+    # The product master cost is 10.00; the forged 0.01 payload cost is ignored.
+    assert pnl.revenue_total == Decimal("40")
+    assert pnl.cogs_total == Decimal("20")
+    assert Decimal(movement) == Decimal("10.0000")
+    assert stock.rows[0].book_value == Decimal("80")
+
+
 async def test_receivable_sale_creates_open_item_without_receipt(org_factory) -> None:
     org = await org_factory("Receivable")
     product_id = await _create_product(org)
@@ -609,6 +657,43 @@ async def test_credit_note_refunds_cash_and_returns_stock(org_factory) -> None:
     assert replay.journal_entry_id == credit.journal_entry_id
     assert replay.credit_note_id == credit.credit_note_id
     assert await _counts(org) == after
+
+
+async def test_unlinked_credit_note_cannot_restock(org_factory) -> None:
+    org = await org_factory("UnlinkedCredit")
+    product_id = await _create_product(org)
+    customer_id = await _create_customer(org)
+    before = await _counts(org)
+
+    with pytest.raises(PostingValidationError) as excinfo:
+        await _post_credit_note(
+            org,
+            uuid.uuid4(),
+            _credit_payload(
+                product_id,
+                customer_id=customer_id,
+                original_receipt_id=None,
+                restock=True,
+            ),
+        )
+    assert excinfo.value.code == "unlinked_restock_not_allowed"
+    assert await _counts(org) == before
+
+    # Service-only credits remain valid without a receipt.
+    credit = await _post_credit_note(
+        org,
+        uuid.uuid4(),
+        _credit_payload(
+            product_id,
+            customer_id=customer_id,
+            original_receipt_id=None,
+            restock=False,
+        ),
+    )
+    assert credit.credit_note_id is not None
+    after = await _counts(org)
+    assert after["stock_movements"] == before["stock_movements"]
+    assert after["stock"] == before["stock"]
 
 
 async def test_credit_note_without_restock_is_capped_by_receipt(org_factory) -> None:
