@@ -20,6 +20,10 @@
 - Financial values are server-derived. Sale COGS, credit-note restock costs,
   and receipt caps are resolved from ledger or product data, never trusted from
   a client payload. Unlinked credit notes cannot restock inventory.
+- The generic proposal endpoint is limited to `manual`, `expense`, and
+  `purchase`. Sale, credit-note, inventory, settlement, and other domain
+  proposals must be created through their dedicated endpoints so domain
+  validation cannot be bypassed.
 
 ## 4. WhatsApp
 - Verify Meta webhook signature.

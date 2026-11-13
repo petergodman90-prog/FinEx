@@ -21,8 +21,14 @@ from app.schemas.proposal import (
     ProposalOut,
 )
 from app.services import proposal_service
+from app.services.errors import DomainValidationError
 
 router = APIRouter(prefix="/proposals", tags=["proposals"])
+
+# Generic proposals are for notes and lightweight expense/purchase staging.
+# Financial and inventory proposal types have dedicated endpoints that run
+# domain validation before staging; allowing them here would bypass that layer.
+GENERIC_PROPOSAL_TYPES = frozenset({"manual", "expense", "purchase"})
 
 
 @router.get(
@@ -67,6 +73,17 @@ async def create_proposal(
     """Create a staged write. Replaying an identical pending proposal returns
     the existing row with ``created=false`` (idempotent — safe for AI/WhatsApp
     retries)."""
+    proposal_type = data.proposal_type.strip().lower()
+    if proposal_type not in GENERIC_PROPOSAL_TYPES:
+        raise DomainValidationError(
+            "This proposal type must be created through its dedicated endpoint",
+            details={
+                "proposal_type": data.proposal_type,
+                "allowed_types": sorted(GENERIC_PROPOSAL_TYPES),
+            },
+        )
+    if proposal_type != data.proposal_type:
+        data = data.model_copy(update={"proposal_type": proposal_type})
     proposal, created = await proposal_service.create_proposal(session, data, user)
     return ProposalListOut(
         proposal=proposal_service.serialize_proposal(proposal), created=created

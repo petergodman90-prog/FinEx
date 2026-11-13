@@ -37,7 +37,7 @@ service; the UI displays backend-provided figures without recalculating them.
    pip install -r requirements.txt -r requirements-dev.txt
    alembic upgrade head
    uvicorn app.main:app --reload        # UI + API: http://127.0.0.1:8000/
-   pytest -q                            # 132 tests; Postgres required, Redis faked
+   pytest -q                            # 141 tests; Postgres required, Redis faked
    ```
 
 4. Open <http://127.0.0.1:8000/>. The backend serves `index.html` and only the

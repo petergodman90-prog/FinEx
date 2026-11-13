@@ -656,6 +656,50 @@ async def test_posting_failure_is_recorded_and_retry_posts(
     assert await _ledger_counts(org_id, user_id) == counts_after
 
 
+async def test_generic_proposal_endpoint_rejects_domain_types(
+    client, register_user
+) -> None:
+    reg = await register_user()
+    h = _h(reg["access_token"])
+
+    for proposal_type in (
+        "sale",
+        "credit_note",
+        "opening_stock",
+        "stock_adjustment",
+        "settlement",
+    ):
+        response = await client.post(
+            "/api/v1/proposals",
+            json={"proposal_type": proposal_type, "title": "Bypass attempt"},
+            headers=h,
+        )
+        assert response.status_code == 422, response.text
+        assert (
+            response.json()["detail"]
+            == "This proposal type must be created through its dedicated endpoint"
+        )
+        assert response.json()["details"]["proposal_type"] == proposal_type
+
+    for proposal_type in ("manual", "expense", "purchase"):
+        response = await client.post(
+            "/api/v1/proposals",
+            json={"proposal_type": proposal_type, "title": f"{proposal_type} note"},
+            headers=h,
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["proposal"]["proposal_type"] == proposal_type
+
+    # Case is normalised before storage and idempotency hashing.
+    response = await client.post(
+        "/api/v1/proposals",
+        json={"proposal_type": "Expense", "title": "Case-normalised expense"},
+        headers=h,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["proposal"]["proposal_type"] == "expense"
+
+
 async def test_manual_proposal_is_never_posted(client, register_user) -> None:
     reg = await register_user()
     h = _h(reg["access_token"])
@@ -692,7 +736,7 @@ async def test_unsupported_proposal_type_is_not_posted(client, register_user) ->
     created = await client.post(
         "/api/v1/proposals",
         json={
-            "proposal_type": "mystery",
+            "proposal_type": "purchase",
             "title": "Not a financial event",
             "payload": {"unexpected": True},
             "amount": "10.00",
