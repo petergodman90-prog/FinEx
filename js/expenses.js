@@ -398,6 +398,13 @@
             setPaymentMode();
             return loadAll(false);
         })
+        .then(function () {
+            const action = new URLSearchParams(window.location.search).get("action");
+            if (canWrite && action === "expense") {
+                window.history.replaceState(null, "", window.location.pathname);
+                openExpenseDialog();
+            }
+        })
         .catch(function (error) {
             if (Fx.handleAuthError(error)) {
                 return;

@@ -110,6 +110,14 @@
     margin-bottom: 18px;
 }
 
+.finance-metrics--four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.finance-metrics--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .finance-metric {
     min-width: 0;
     padding: 15px 16px;

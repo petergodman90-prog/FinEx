@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FinEx | Products &amp; Stock</title>
+
+    <script>
+        (function () {
+            try {
+                var savedTheme = localStorage.getItem("finex-theme");
+                document.documentElement.dataset.theme =
+                    savedTheme === "light" || savedTheme === "dark"
+                        ? savedTheme
+                        : "dark";
+            } catch (error) {
+                document.documentElement.dataset.theme = "dark";
+            }
+        })();
+    </script>
+
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/financial-workspaces.css">
+</head>
+<body class="financial-page inventory-page">
+    <div class="dashboard-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <img src="../assets/images/finex-logo.jpg" alt="FinEx Logo" class="brand-logo">
+                    <h2>FinEx</h2>
+                </div>
+                <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Collapse sidebar" aria-expanded="true" aria-controls="sidebar">
+                    <svg class="collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+            </div>
+
+            <p class="sidebar-section-title">Workspace</p>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <a href="dashboard.html" class="nav-link" aria-label="Dashboard">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-dashboard"></use></svg></span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+                <a href="debts-debtors.html" class="nav-link" aria-label="Debts &amp; Debtors">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-ledger"></use></svg></span>
+                    <span class="nav-label">Debts &amp; Debtors</span>
+                </a>
+                <a href="expenses.html" class="nav-link" aria-label="Expenses">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-expenses"></use></svg></span>
+                    <span class="nav-label">Expenses</span>
+                </a>
+                <a href="suppliers.html" class="nav-link" aria-label="Suppliers">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-businesses"></use></svg></span>
+                    <span class="nav-label">Suppliers</span>
+                </a>
+                <a href="inventory.html" class="nav-link active" aria-label="Products &amp; Stock" aria-current="page">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-products"></use></svg></span>
+                    <span class="nav-label">Products &amp; Stock</span>
+                </a>
+                <a href="sales.html" class="nav-link" aria-label="Sales">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-sales"></use></svg></span>
+                    <span class="nav-label">Sales</span>
+                </a>
+                <a href="credit-notes.html" class="nav-link" aria-label="Credit Notes">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-transactions"></use></svg></span>
+                    <span class="nav-label">Credit Notes</span>
+                </a>
+                <a href="reports.html" class="nav-link" aria-label="Reports">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-analytics"></use></svg></span>
+                    <span class="nav-label">Reports</span>
+                </a>
+                <a href="staff.html" class="nav-link" aria-label="Staff">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-staff"></use></svg></span>
+                    <span class="nav-label">Staff</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-bottom">
+                <a href="../index.html" class="nav-link logout-link" aria-label="Sign Out">
+                    <span class="nav-icon nav-icon--red" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-logout"></use></svg></span>
+                    <span class="nav-label">Sign Out</span>
+                </a>
+                <div class="sidebar-footer"><span class="sidebar-footer-mark" aria-hidden="true">F</span><span class="sidebar-footer-text">FinEx Business</span></div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="welcome-section">
+                <div class="finance-page-head">
+                    <div>
+                        <h1>Products &amp; Stock</h1>
+                        <p class="welcome-description">Product master data, stock levels, valuation, and immutable stock movements.</p>
+                    </div>
+                    <div class="finance-page-actions">
+                        <button type="button" class="btn btn-primary" id="product-add-open" hidden>+ Add Product</button>
+                        <button type="button" class="btn btn-secondary" id="opening-stock-open" hidden>Opening Stock</button>
+                        <button type="button" class="btn btn-secondary" id="stock-adjustment-open" hidden>Adjust Stock</button>
+                    </div>
+                </div>
+                <p class="finance-status" id="inventory-status" role="status" aria-live="polite">Loading inventory…</p>
+            </header>
+
+            <div class="finance-metrics" aria-label="Inventory summary">
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Products</p>
+                    <p class="finance-metric-value" id="inventory-product-count">—</p>
+                    <p class="finance-metric-note">Product master records</p>
+                </article>
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Stocked Items</p>
+                    <p class="finance-metric-value" id="inventory-stocked-count">—</p>
+                    <p class="finance-metric-note">Items in the valuation report</p>
+                </article>
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Inventory Book Value</p>
+                    <p class="finance-metric-value" id="inventory-book-value">—</p>
+                    <p class="finance-metric-note">From posted stock movements</p>
+                </article>
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Ledger Balance</p>
+                    <p class="finance-metric-value" id="inventory-ledger-balance">—</p>
+                    <p class="finance-metric-note">Inventory control account</p>
+                </article>
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Reconciliation</p>
+                    <p class="finance-metric-value" id="inventory-reconciliation">—</p>
+                    <p class="finance-metric-note">Book value equals ledger balance</p>
+                </article>
+            </div>
+
+            <div class="finance-tabs" role="tablist" aria-label="Products and stock sections">
+                <button type="button" class="finance-tab is-active" role="tab" aria-selected="true" aria-controls="stock-levels-section" id="stock-tab-levels" data-stock-tab="levels">Stock Levels</button>
+                <button type="button" class="finance-tab" role="tab" aria-selected="false" aria-controls="stock-valuation-section" id="stock-tab-valuation" data-stock-tab="valuation">Valuation</button>
+                <button type="button" class="finance-tab" role="tab" aria-selected="false" aria-controls="stock-movements-section" id="stock-tab-movements" data-stock-tab="movements">Movements</button>
+                <button type="button" class="finance-tab" role="tab" aria-selected="false" aria-controls="stock-products-section" id="stock-tab-products" data-stock-tab="products">Products</button>
+            </div>
+
+            <section class="finance-section" id="stock-levels-section" role="tabpanel" aria-labelledby="stock-tab-levels">
+                <div class="finance-toolbar">
+                    <div class="form-group">
+                        <label for="stock-level-search">Search stock</label>
+                        <input type="search" class="form-control" id="stock-level-search" placeholder="SKU or product name">
+                    </div>
+                    <div class="form-group">
+                        <label for="stock-level-filter">View</label>
+                        <select class="form-control" id="stock-level-filter">
+                            <option value="all">All products</option>
+                            <option value="reorder">Needs reorder</option>
+                        </select>
+                    </div>
+                    <div class="finance-toolbar-spacer"></div>
+                    <button type="button" class="setting-button" id="stock-levels-refresh">Refresh</button>
+                </div>
+
+                <p class="finance-inline-note" id="stock-levels-count"></p>
+                <div class="panel finance-panel">
+                    <div class="table-container">
+                        <table class="transactions-table" aria-label="Stock levels">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Product</th>
+                                    <th scope="col">On Hand</th>
+                                    <th scope="col">Reorder Point</th>
+                                    <th scope="col">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stock-levels-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section class="finance-section" id="stock-valuation-section" role="tabpanel" aria-labelledby="stock-tab-valuation" hidden>
+                <div class="finance-kpi-banner" id="valuation-banner">
+                    <span id="valuation-banner-text">Valuation reconciliation unavailable.</span>
+                    <button type="button" class="setting-button" id="valuation-refresh">Refresh</button>
+                </div>
+                <div class="panel finance-panel">
+                    <div class="table-container">
+                        <table class="transactions-table" aria-label="Stock valuation">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Product</th>
+                                    <th scope="col">On Hand</th>
+                                    <th scope="col">Average Unit Cost</th>
+                                    <th scope="col">Book Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="valuation-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section class="finance-section" id="stock-movements-section" role="tabpanel" aria-labelledby="stock-tab-movements" hidden>
+                <div class="finance-toolbar">
+                    <div class="form-group">
+                        <label for="movement-product">Product</label>
+                        <select class="form-control" id="movement-product"><option value="">All products</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="movement-type">Movement type</label>
+                        <select class="form-control" id="movement-type">
+                            <option value="">All movements</option>
+                            <option value="opening_balance">Opening balance</option>
+                            <option value="purchase">Purchase</option>
+                            <option value="sale">Sale</option>
+                            <option value="sale_reversal">Sale reversal</option>
+                            <option value="adjustment_in">Adjustment in</option>
+                            <option value="adjustment_out">Adjustment out</option>
+                            <option value="stock_take">Stock take</option>
+                            <option value="return_in">Return in</option>
+                            <option value="return_out">Return out</option>
+                        </select>
+                    </div>
+                    <div class="finance-toolbar-spacer"></div>
+                    <button type="button" class="setting-button" id="movements-refresh">Refresh</button>
+                </div>
+                <p class="finance-inline-note" id="movements-count"></p>
+                <div class="panel finance-panel">
+                    <div class="table-container">
+                        <table class="transactions-table" aria-label="Stock movements">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Occurred</th>
+                                    <th scope="col">Product</th>
+                                    <th scope="col">Type</th>
+                                    <th scope="col">Quantity</th>
+                                    <th scope="col">Unit Cost</th>
+                                    <th scope="col">Source</th>
+                                </tr>
+                            </thead>
+                            <tbody id="movements-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section class="finance-section" id="stock-products-section" role="tabpanel" aria-labelledby="stock-tab-products" hidden>
+                <div class="finance-toolbar">
+                    <div class="form-group">
+                        <label for="product-search">Search products</label>
+                        <input type="search" class="form-control" id="product-search" placeholder="SKU or product name">
+                    </div>
+                    <div class="form-group">
+                        <label for="product-filter">Records</label>
+                        <select class="form-control" id="product-filter">
+                            <option value="active">Active only</option>
+                            <option value="all">All products</option>
+                        </select>
+                    </div>
+                    <div class="finance-toolbar-spacer"></div>
+                    <button type="button" class="setting-button" id="products-refresh">Refresh</button>
+                </div>
+                <p class="finance-inline-note" id="products-count"></p>
+                <div class="panel finance-panel">
+                    <div class="table-container">
+                        <table class="transactions-table" aria-label="Products">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Product</th>
+                                    <th scope="col">Unit</th>
+                                    <th scope="col">Sale Price</th>
+                                    <th scope="col">Cost</th>
+                                    <th scope="col">Reorder Point</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="products-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <dialog class="app-dialog finance-dialog finance-dialog--compact" id="product-dialog" aria-labelledby="product-dialog-title">
+        <form class="app-dialog-card" id="product-form">
+            <button type="button" class="app-dialog-close" id="product-dialog-close" aria-label="Close product dialog">&times;</button>
+            <span class="app-dialog-eyebrow">Product master</span>
+            <h2 id="product-dialog-title">Add a product</h2>
+            <p id="product-dialog-description">Products are used by sales, stock movements, and inventory valuation.</p>
+
+            <div class="finance-form-grid">
+                <div class="form-group">
+                    <label for="product-sku">SKU</label>
+                    <input type="text" class="form-control" id="product-sku" maxlength="50" required>
+                </div>
+                <div class="form-group">
+                    <label for="product-name">Name</label>
+                    <input type="text" class="form-control" id="product-name" maxlength="200" required>
+                </div>
+                <div class="form-group">
+                    <label for="product-unit">Unit</label>
+                    <input type="text" class="form-control" id="product-unit" value="each" maxlength="20" required>
+                </div>
+                <div class="form-group">
+                    <label for="product-sale-price">Sale price</label>
+                    <input type="number" class="form-control" id="product-sale-price" min="0" step="0.0001" required>
+                </div>
+                <div class="form-group">
+                    <label for="product-cost">Cost</label>
+                    <input type="number" class="form-control" id="product-cost" min="0" step="0.0001" value="0" required>
+                </div>
+                <div class="form-group">
+                    <label for="product-reorder-point">Reorder point</label>
+                    <input type="number" class="form-control" id="product-reorder-point" min="0" step="0.0001" value="0" required>
+                </div>
+                <div class="form-group span-2" id="product-active-group" hidden>
+                    <label class="finance-checkline" for="product-is-active">
+                        <input type="checkbox" id="product-is-active" checked>
+                        <span>Product is active and available for new sales</span>
+                    </label>
+                </div>
+            </div>
+
+            <p class="app-dialog-error" id="product-error" role="alert" hidden></p>
+            <div class="app-dialog-actions">
+                <button type="button" class="setting-button" id="product-cancel">Cancel</button>
+                <button type="submit" class="setting-button finance-submit" id="product-submit">Add product</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog class="app-dialog finance-dialog finance-dialog--compact" id="opening-stock-dialog" aria-labelledby="opening-stock-title">
+        <form class="app-dialog-card" id="opening-stock-form">
+            <button type="button" class="app-dialog-close" id="opening-stock-close" aria-label="Close opening stock dialog">&times;</button>
+            <span class="app-dialog-eyebrow">Stock proposal</span>
+            <h2 id="opening-stock-title">Record opening stock</h2>
+            <p>Opening stock is staged as a proposal. A manager or administrator must approve it before the ledger and stock levels update.</p>
+
+            <div class="finance-form-grid">
+                <div class="form-group span-2">
+                    <label for="opening-stock-product">Product</label>
+                    <select class="form-control" id="opening-stock-product" required></select>
+                </div>
+                <div class="form-group">
+                    <label for="opening-stock-quantity">Quantity</label>
+                    <input type="number" class="form-control" id="opening-stock-quantity" min="0.0001" step="0.0001" required>
+                </div>
+                <div class="form-group">
+                    <label for="opening-stock-cost">Unit cost (optional)</label>
+                    <input type="number" class="form-control" id="opening-stock-cost" min="0" step="0.0001">
+                </div>
+                <div class="form-group span-2">
+                    <label for="opening-stock-effective">Effective date and time</label>
+                    <input type="datetime-local" class="form-control" id="opening-stock-effective" required>
+                </div>
+                <div class="form-group span-2">
+                    <label for="opening-stock-memo">Memo (optional)</label>
+                    <textarea class="form-control" id="opening-stock-memo" rows="2" maxlength="2000"></textarea>
+                </div>
+            </div>
+
+            <p class="app-dialog-error" id="opening-stock-error" role="alert" hidden></p>
+            <div class="app-dialog-actions">
+                <button type="button" class="setting-button" id="opening-stock-cancel">Cancel</button>
+                <button type="submit" class="setting-button finance-submit" id="opening-stock-submit">Stage opening stock</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog class="app-dialog finance-dialog finance-dialog--compact" id="stock-adjustment-dialog" aria-labelledby="stock-adjustment-title">
+        <form class="app-dialog-card" id="stock-adjustment-form">
+            <button type="button" class="app-dialog-close" id="stock-adjustment-close" aria-label="Close stock adjustment dialog">&times;</button>
+            <span class="app-dialog-eyebrow">Stock proposal</span>
+            <h2 id="stock-adjustment-title">Adjust stock</h2>
+            <p>Adjustments are staged as proposals. A manager or administrator must approve them before stock and the ledger update.</p>
+
+            <div class="finance-form-grid">
+                <div class="form-group">
+                    <label for="stock-adjustment-direction">Direction</label>
+                    <select class="form-control" id="stock-adjustment-direction">
+                        <option value="in">Stock in</option>
+                        <option value="out">Stock out</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="stock-adjustment-product">Product</label>
+                    <select class="form-control" id="stock-adjustment-product" required></select>
+                </div>
+                <div class="form-group">
+                    <label for="stock-adjustment-quantity">Quantity</label>
+                    <input type="number" class="form-control" id="stock-adjustment-quantity" min="0.0001" step="0.0001" required>
+                </div>
+                <div class="form-group">
+                    <label for="stock-adjustment-cost">Unit cost (optional)</label>
+                    <input type="number" class="form-control" id="stock-adjustment-cost" min="0" step="0.0001">
+                </div>
+                <div class="form-group span-2">
+                    <label for="stock-adjustment-reason">Reason</label>
+                    <input type="text" class="form-control" id="stock-adjustment-reason" maxlength="500" required>
+                </div>
+                <div class="form-group span-2">
+                    <label for="stock-adjustment-effective">Effective date and time</label>
+                    <input type="datetime-local" class="form-control" id="stock-adjustment-effective" required>
+                </div>
+                <div class="form-group span-2">
+                    <label for="stock-adjustment-memo">Memo (optional)</label>
+                    <textarea class="form-control" id="stock-adjustment-memo" rows="2" maxlength="2000"></textarea>
+                </div>
+            </div>
+
+            <p class="app-dialog-error" id="stock-adjustment-error" role="alert" hidden></p>
+            <div class="app-dialog-actions">
+                <button type="button" class="setting-button" id="stock-adjustment-cancel">Cancel</button>
+                <button type="submit" class="setting-button finance-submit" id="stock-adjustment-submit">Stage adjustment</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/finance-common.js"></script>
+    <script src="../js/dashboard.js"></script>
+    <script src="../js/inventory.js"></script>
+</body>
+</html>

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FinEx | Sales</title>
+
+    <script>
+        (function () {
+            try {
+                var savedTheme = localStorage.getItem("finex-theme");
+                document.documentElement.dataset.theme =
+                    savedTheme === "light" || savedTheme === "dark"
+                        ? savedTheme
+                        : "dark";
+            } catch (error) {
+                document.documentElement.dataset.theme = "dark";
+            }
+        })();
+    </script>
+
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/financial-workspaces.css">
+</head>
+<body class="financial-page sales-page">
+    <div class="dashboard-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <img src="../assets/images/finex-logo.jpg" alt="FinEx Logo" class="brand-logo">
+                    <h2>FinEx</h2>
+                </div>
+                <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Collapse sidebar" aria-expanded="true" aria-controls="sidebar">
+                    <svg class="collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+            </div>
+
+            <p class="sidebar-section-title">Workspace</p>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <a href="dashboard.html" class="nav-link" aria-label="Dashboard">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-dashboard"></use></svg></span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+                <a href="debts-debtors.html" class="nav-link" aria-label="Debts &amp; Debtors">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-ledger"></use></svg></span>
+                    <span class="nav-label">Debts &amp; Debtors</span>
+                </a>
+                <a href="expenses.html" class="nav-link" aria-label="Expenses">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-expenses"></use></svg></span>
+                    <span class="nav-label">Expenses</span>
+                </a>
+                <a href="suppliers.html" class="nav-link" aria-label="Suppliers">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-businesses"></use></svg></span>
+                    <span class="nav-label">Suppliers</span>
+                </a>
+                <a href="inventory.html" class="nav-link" aria-label="Products &amp; Stock">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-products"></use></svg></span>
+                    <span class="nav-label">Products &amp; Stock</span>
+                </a>
+                <a href="sales.html" class="nav-link active" aria-label="Sales" aria-current="page">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-sales"></use></svg></span>
+                    <span class="nav-label">Sales</span>
+                </a>
+                <a href="credit-notes.html" class="nav-link" aria-label="Credit Notes">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-transactions"></use></svg></span>
+                    <span class="nav-label">Credit Notes</span>
+                </a>
+                <a href="reports.html" class="nav-link" aria-label="Reports">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-analytics"></use></svg></span>
+                    <span class="nav-label">Reports</span>
+                </a>
+                <a href="staff.html" class="nav-link" aria-label="Staff">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-staff"></use></svg></span>
+                    <span class="nav-label">Staff</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-bottom">
+                <a href="../index.html" class="nav-link logout-link" aria-label="Sign Out">
+                    <span class="nav-icon nav-icon--red" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><use href="../assets/sidebar-icons.svg#icon-logout"></use></svg></span>
+                    <span class="nav-label">Sign Out</span>
+                </a>
+                <div class="sidebar-footer"><span class="sidebar-footer-mark" aria-hidden="true">F</span><span class="sidebar-footer-text">FinEx Business</span></div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="welcome-section">
+                <div class="finance-page-head">
+                    <div>
+                        <h1>Sales</h1>
+                        <p class="welcome-description">Staged sales, posted receipts, and customer receivables.</p>
+                    </div>
+                    <div class="finance-page-actions">
+                        <button type="button" class="btn btn-primary" id="sale-add-open" hidden>+ New Sale</button>
+                    </div>
+                </div>
+                <p class="finance-status" id="sales-status" role="status" aria-live="polite">Loading sales…</p>
+            </header>
+
+            <div class="finance-metrics finance-metrics--four" aria-label="Sales summary">
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Sales Records</p>
+                    <p class="finance-metric-value" id="sales-total">—</p>
+                    <p class="finance-metric-note">Matching the current view</p>
+                </article>
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Pending Approval</p>
+                    <p class="finance-metric-value" id="sales-pending">—</p>
+                    <p class="finance-metric-note">Awaiting a manager decision</p>
+                </article>
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Posted</p>
+                    <p class="finance-metric-value" id="sales-posted">—</p>
+                    <p class="finance-metric-note">Sales posted to the ledger</p>
+                </article>
+                <article class="finance-metric">
+                    <p class="finance-metric-label">Receivables</p>
+                    <p class="finance-metric-value" id="sales-receivables">—</p>
+                    <p class="finance-metric-note">Outstanding customer balances</p>
+                </article>
+            </div>
+
+            <div class="finance-toolbar">
+                <div class="form-group">
+                    <label for="sales-filter">Status</label>
+                    <select class="form-control" id="sales-filter">
+                        <option value="">All sales</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="applied">Posted</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                </div>
+                <div class="finance-toolbar-spacer"></div>
+                <button type="button" class="setting-button" id="sales-refresh">Refresh</button>
+            </div>
+
+            <div class="panel finance-panel">
+                <div class="panel-header">
+                    <h2>Sales ledger</h2>
+                    <p>Approving a sale posts revenue, cost of goods sold, stock movement, and the receipt or receivable.</p>
+                </div>
+                <div class="table-container">
+                    <table class="transactions-table" aria-label="Sales">
+                        <thead>
+                            <tr>
+                                <th scope="col">Sale</th>
+                                <th scope="col">Customer</th>
+                                <th scope="col">Effective</th>
+                                <th scope="col">Payment</th>
+                                <th scope="col">Receipt / Item</th>
+                                <th scope="col">Status</th>
+                                <th scope="col">Amount</th>
+                                <th scope="col">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sales-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <dialog class="app-dialog finance-dialog" id="sale-dialog" aria-labelledby="sale-dialog-title">
+        <form class="app-dialog-card" id="sale-form">
+            <button type="button" class="app-dialog-close" id="sale-dialog-close" aria-label="Close sale dialog">&times;</button>
+            <span class="app-dialog-eyebrow">Sales proposal</span>
+            <h2 id="sale-dialog-title">Stage a sale</h2>
+            <p>A sale is staged first. A manager or administrator must approve it before revenue, stock, and the receipt or receivable post.</p>
+
+            <div class="finance-form-grid">
+                <div class="form-group">
+                    <label for="sale-customer">Customer</label>
+                    <select class="form-control" id="sale-customer" required></select>
+                </div>
+                <div class="form-group">
+                    <label for="sale-currency">Currency</label>
+                    <input type="text" class="form-control" id="sale-currency" maxlength="3" required>
+                </div>
+                <div class="form-group">
+                    <label for="sale-effective">Effective date and time</label>
+                    <input type="datetime-local" class="form-control" id="sale-effective" required>
+                </div>
+                <div class="form-group">
+                    <label for="sale-payment-method">Payment method</label>
+                    <select class="form-control" id="sale-payment-method">
+                        <option value="cash">Cash</option>
+                        <option value="receivable">Receivable</option>
+                    </select>
+                </div>
+                <div class="form-group" id="sale-cash-group">
+                    <label for="sale-cash-account">Cash account code</label>
+                    <input type="text" class="form-control" id="sale-cash-account" value="1000" maxlength="20">
+                </div>
+                <div class="form-group" id="sale-receivable-group" hidden>
+                    <label for="sale-due-on">Due date</label>
+                    <input type="date" class="form-control" id="sale-due-on">
+                </div>
+                <div class="form-group span-2" id="sale-receipt-group">
+                    <label class="finance-checkline" for="sale-issue-receipt">
+                        <input type="checkbox" id="sale-issue-receipt" checked>
+                        <span>Issue a receipt when the sale is posted</span>
+                    </label>
+                </div>
+                <div class="form-group span-2">
+                    <label for="sale-memo">Memo (optional)</label>
+                    <textarea class="form-control" id="sale-memo" rows="2" maxlength="2000"></textarea>
+                </div>
+            </div>
+
+            <div class="finance-lines-head">
+                <h3>Line items</h3>
+                <button type="button" class="setting-button" id="sale-add-line">+ Add line</button>
+            </div>
+            <div class="finance-lines">
+                <table aria-label="Sale line items">
+                    <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Product</th>
+                            <th scope="col">Quantity</th>
+                            <th scope="col">Unit price</th>
+                            <th scope="col">Line total</th>
+                            <th scope="col"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="sale-lines-body"></tbody>
+                </table>
+            </div>
+            <div class="finance-lines-foot"><span>Projected total</span><strong id="sale-projected-total">$0.00</strong></div>
+
+            <p class="app-dialog-error" id="sale-error" role="alert" hidden></p>
+            <div class="app-dialog-actions">
+                <button type="button" class="setting-button" id="sale-cancel">Cancel</button>
+                <button type="submit" class="setting-button finance-submit" id="sale-submit">Stage sale</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/finance-common.js"></script>
+    <script src="../js/dashboard.js"></script>
+    <script src="../js/sales.js"></script>
+</body>
+</html>
