@@ -80,9 +80,9 @@ Sale rules:
 
 - `lines` must contain at least one line. Each product may appear only once;
   combine quantities instead of duplicating a product.
-- `unit_cost` is the historical cost snapshot used for COGS and the stock
-  movement. It may be zero, but it is required so a later product-cost change
-  cannot rewrite history.
+- `unit_cost` is an optional informational staging snapshot. Posting resolves
+  COGS and the stock-movement cost from the product master, so a client cannot
+  understate COGS by supplying a forged value.
 - `payment.method` is `"cash"` (an active cash-flagged account selected by
   `cash_account_code`, default `1000`) or `"receivable"` (debit `1100` and
   create a customer receivable).
@@ -137,11 +137,12 @@ Credit-note rules:
   receipt or another credit note. The original receipt must belong to a
   completed sale; each credited product must be on that sale and the returned
   quantity cannot exceed the unreturned quantity.
-- `restock: true` requires a product on every line. The posting service takes
-  the restock cost from the original sale line (or from the product master for
-  an unlinked note). Clients cannot supply `unit_cost`. The API can stage a
-  non-restocked note without a product. A refund's `cash_account_code` must be
-  an active cash-flagged account.
+- `restock: true` requires `original_receipt_id` and a product on every line.
+  The posting service takes the restock cost from the original sale line.
+  Unlinked credit notes are service-only and can never restock inventory.
+  Clients cannot supply `unit_cost`. The API can stage a non-restocked note
+  without a product. A refund's `cash_account_code` must be an active
+  cash-flagged account.
 - The journal debits revenue `4000` and credits the cash account; restocking
   also debits inventory `1200` and credits COGS `5000`. The credit note is a new
   document linked to the original receipt and does not edit historical records.

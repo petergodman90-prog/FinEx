@@ -360,7 +360,7 @@
         const actionCell = document.createElement("td");
         const actions = document.createElement("div");
         actions.className = "finance-table-actions";
-        if (sale.status === "pending" && canApprove) {
+        if (sale.status === "pending" && Fx.canApproveProposal(sale)) {
             const approveButton = document.createElement("button");
             approveButton.type = "button";
             approveButton.className = "setting-button";
@@ -382,7 +382,9 @@
             actions.appendChild(copyButton);
         }
         if (actions.childElementCount === 0) {
-            actions.textContent = "—";
+            actions.textContent = sale.status === "pending" && canApprove
+                ? "Awaiting another approver"
+                : "—";
         }
         actionCell.appendChild(actions);
 
@@ -491,7 +493,7 @@
     }
 
     async function approveSale(sale, button) {
-        if (!canApprove || button.disabled) {
+        if (!Fx.canApproveProposal(sale) || button.disabled) {
             return;
         }
         button.disabled = true;

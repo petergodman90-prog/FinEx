@@ -22,6 +22,7 @@
     const state = {
         me: null,
         loadingMe: null,
+        userId: "",
         role: "",
         currency: "USD",
         canWrite: false,
@@ -40,6 +41,7 @@
             state.loadingMe = API.request("/auth/me")
                 .then(function (me) {
                     state.me = me;
+                    state.userId = String(me.user?.id || "");
                     state.role = normaliseRole(me.role);
                     state.currency = String(me.currency || "USD").toUpperCase();
                     state.canWrite = WRITE_ROLES.has(state.role);
@@ -53,6 +55,17 @@
                 });
         }
         return state.loadingMe;
+    }
+
+    function canApproveProposal(proposal) {
+        if (!state.canApprove) {
+            return false;
+        }
+        if (state.role !== "manager") {
+            return true;
+        }
+        const creator = proposal && proposal.created_by_id;
+        return !creator || creator !== state.userId;
     }
 
     function handleAuthError(error) {
@@ -274,6 +287,7 @@
         API,
         state,
         loadMe,
+        canApproveProposal,
         handleAuthError,
         setText,
         formatMoney,

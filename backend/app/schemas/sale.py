@@ -160,6 +160,10 @@ class CreditNoteCreate(BaseModel):
             raise ValueError(
                 "A credit note without an original receipt requires customer_id and currency"
             )
+        if self.original_receipt_id is None and self.restock:
+            raise ValueError(
+                "Restocking a credit note requires an original_receipt_id"
+            )
         if self.restock and any(
             line.product_id is None for line in self.lines
         ):
@@ -210,6 +214,7 @@ class SaleOut(BaseModel):
     open_item_id: uuid.UUID | None = None
     posted_at: datetime | None = None
     posting_error: dict | None = None
+    created_by_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -252,6 +257,7 @@ class CreditNoteOut(BaseModel):
     credit_note_number: int | None = None
     posted_at: datetime | None = None
     posting_error: dict | None = None
+    created_by_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

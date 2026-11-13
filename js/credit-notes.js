@@ -28,6 +28,7 @@
     const effectiveInput = document.getElementById("credit-note-effective");
     const cashAccountInput = document.getElementById("credit-note-cash-account");
     const restockInput = document.getElementById("credit-note-restock");
+    const restockHint = document.getElementById("credit-note-restock-hint");
     const notesInput = document.getElementById("credit-note-notes");
     const linesBody = document.getElementById("credit-note-lines-body");
     const addLineButton = document.getElementById("credit-note-add-line");
@@ -43,6 +44,7 @@
     let pendingNotesLoad = false;
     let pendingLookupsLoad = false;
     let lineCounter = 0;
+    let receiptWasLinked = null;
 
     function shortId(value) {
         return String(value || "").slice(0, 8).toUpperCase();
@@ -204,6 +206,21 @@
         currencyGroup.hidden = linked;
         customerInput.required = !linked;
         currencyInput.required = !linked;
+
+        // Inventory can only be returned against a known sale. An unlinked
+        // service credit remains available, but it must never restock.
+        restockInput.disabled = !linked;
+        if (!linked) {
+            restockInput.checked = false;
+        } else if (receiptWasLinked === false) {
+            restockInput.checked = true;
+        }
+        if (restockHint) {
+            restockHint.textContent = linked
+                ? "Returned stock is costed from the original sale and needs a linked receipt."
+                : "Restocking requires a linked original receipt.";
+        }
+        receiptWasLinked = linked;
     }
 
     function resetDialog() {
@@ -335,7 +352,7 @@
         const actionCell = document.createElement("td");
         const actions = document.createElement("div");
         actions.className = "finance-table-actions";
-        if (creditNote.status === "pending" && canApprove) {
+        if (creditNote.status === "pending" && Fx.canApproveProposal(creditNote)) {
             const approveButton = document.createElement("button");
             approveButton.type = "button";
             approveButton.className = "setting-button";
@@ -346,7 +363,9 @@
             actions.appendChild(approveButton);
         }
         if (actions.childElementCount === 0) {
-            actions.textContent = "—";
+            actions.textContent = creditNote.status === "pending" && canApprove
+                ? "Awaiting another approver"
+                : "—";
         }
         actionCell.appendChild(actions);
 
@@ -452,7 +471,7 @@
     }
 
     async function approveCreditNote(creditNote, button) {
-        if (!canApprove || button.disabled) {
+        if (!Fx.canApproveProposal(creditNote) || button.disabled) {
             return;
         }
         button.disabled = true;
@@ -511,6 +530,10 @@
         }
         if (!effectiveAt) {
             showFormError("Enter a valid effective date and time.");
+            return;
+        }
+        if (!receiptId && restock) {
+            showFormError("Restocking requires a linked original receipt.");
             return;
         }
 

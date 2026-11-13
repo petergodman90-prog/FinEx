@@ -488,6 +488,43 @@ async def test_sales_validation_and_rbac(
     )
     assert no_receipt_or_customer.status_code == 422
 
+    unlinked_restock = await client.post(
+        "/api/v1/sales/credit-notes",
+        json={
+            "effective_at": _now(),
+            "customer_id": customer["id"],
+            "currency": "NGN",
+            "restock": True,
+            "lines": [
+                {
+                    "product_id": product["id"],
+                    "quantity": "1",
+                    "unit_price": "5.00",
+                }
+            ],
+        },
+        headers=h,
+    )
+    assert unlinked_restock.status_code == 422
+    assert "original_receipt_id" in unlinked_restock.text
+
+    # A service-only credit note remains valid without a receipt as long as it
+    # does not attempt to restock inventory.
+    unlinked_service = await client.post(
+        "/api/v1/sales/credit-notes",
+        json={
+            "effective_at": _now(),
+            "customer_id": customer["id"],
+            "currency": "NGN",
+            "restock": False,
+            "lines": [{"quantity": "1", "unit_price": "5.00"}],
+        },
+        headers=h,
+    )
+    assert unlinked_service.status_code == 200, unlinked_service.text
+    assert unlinked_service.json()["credit_note"]["status"] == "pending"
+    assert unlinked_service.json()["credit_note"]["restock"] is False
+
     credit_cost_override = await client.post(
         "/api/v1/sales/credit-notes",
         json={
