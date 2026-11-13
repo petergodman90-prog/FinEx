@@ -18,6 +18,9 @@ pip install -r requirements.txt -r requirements-dev.txt
 alembic upgrade head
 uvicorn app.main:app --reload        # http://127.0.0.1:8000/health
 pytest -q                            # 141 tests
+python tests/e2e_browser.py          # headless Chrome + PostgreSQL browser smoke test
 ```
 
 Requires PostgreSQL (see `../docker-compose.yml`); Redis is faked in tests.
+The browser E2E starts its own API server and Chrome instance, seeds a disposable
+tenant, and exits non-zero on any failed UI assertion.

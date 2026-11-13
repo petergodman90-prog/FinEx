@@ -226,7 +226,12 @@ alembic upgrade head              # DB must be up: docker compose up -d
 uvicorn app.main:app --reload     # http://127.0.0.1:8000/health
 
 pytest -q                         # Postgres required; Redis is faked (fakeredis)
+python tests/e2e_browser.py       # headless Chrome + Postgres browser smoke test
 ```
+
+The browser smoke test starts its own fakeredis-backed API server, seeds a
+disposable tenant, and verifies the manager self-approval suppression and
+credit-note restock states. CI runs it in the separate `browser` workflow.
 
 ## Security invariants (enforced, not aspirational)
 - Every tenant table has RLS enabled + forced with the org policy; the app
