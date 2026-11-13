@@ -169,7 +169,7 @@ def _start_server(env: dict[str, str], log_path: Path) -> tuple[subprocess.Popen
                 + log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
             )
         try:
-            response = httpx.get(f"{base}/health", timeout=2)
+            response = httpx.get(f"{base}/ready", timeout=2)
             if response.status_code == 200:
                 print(f"[e2e] API listening on {base}")
                 return proc, base

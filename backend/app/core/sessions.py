@@ -33,6 +33,11 @@ def _get_redis() -> aioredis.Redis:
 # ── Per-Token Revocation ───────────────────────────────────
 
 
+async def ping() -> None:
+    """Round-trip the shared Redis so readiness checks fail closed."""
+    await _get_redis().ping()
+
+
 async def revoke_token(jti: str, expires_at: datetime) -> None:
     """Add a single token JTI to the revocation list (TTL = remaining lifetime)."""
     r = _get_redis()

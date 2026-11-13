@@ -37,7 +37,7 @@ service; the UI displays backend-provided figures without recalculating them.
    pip install -r requirements.txt -r requirements-dev.txt
    alembic upgrade head
    uvicorn app.main:app --reload        # UI + API: http://127.0.0.1:8000/
-   pytest -q                            # 141 tests; Postgres required, Redis faked
+   pytest -q                            # 144 tests; Postgres required, Redis faked
    python tests/e2e_browser.py          # headless Chrome browser smoke test
    ```
 
@@ -82,6 +82,7 @@ runtime `finex_app` role. See
 - [Backend foundation](docs/backend-foundation.md) — layers, invariants, Windows/Docker notes
 - [Database migration runbook](docs/runbooks/database-migrations.md)
 - [Backup and restore runbook](docs/runbooks/backup-and-restore.md)
+- [Production deployment runbook](docs/runbooks/production-deployment.md) — HTTPS, monitoring, secrets, backups, go-live checklist
 - [ADR 0001: financial records are append-only](docs/adr/0001-financial-records-are-append-only.md)
 
 ## Windows/Docker note
