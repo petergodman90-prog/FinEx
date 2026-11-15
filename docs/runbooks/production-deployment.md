@@ -148,16 +148,17 @@ finex.example.com {
         X-Frame-Options "DENY"
         Referrer-Policy "no-referrer"
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
-        Content-Security-Policy "default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        Content-Security-Policy "default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         -Server
     }
     reverse_proxy 127.0.0.1:8000
 }
 ```
 
-The CSP keeps the existing inline theme/bootstrap scripts working while
-blocking third-party script origins. Migrate those inline scripts to nonces
-before tightening `script-src` further.
+The CSP allows same-origin scripts only; the theme bootstrap is loaded from
+`js/theme-init.js`. `style-src` still permits inline styles because the
+templates use style attributes. Migrate those to classes before tightening
+`style-src` further.
 
 ### nginx example
 
@@ -178,7 +179,7 @@ server {
     add_header X-Frame-Options DENY always;
     add_header Referrer-Policy no-referrer always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
 
     location / {
         proxy_pass http://127.0.0.1:8000;
@@ -294,8 +295,8 @@ These are intentionally not silently marked as done:
   audited by the `dependency-audit` workflow on requirements changes, on main,
   and weekly; it was clean on 2026-11-15. Re-run it immediately before launch
   because the vulnerability database changes over time.
-- **CSP still permits inline scripts** because the static theme bootstrap uses
-  them. Tighten this after moving the bootstrap to a nonced or external file.
+- **CSP still permits inline styles** because the templates use style
+  attributes. Tighten `style-src` after moving those styles to classes.
 
 ## Go-live checklist
 
@@ -303,6 +304,7 @@ These are intentionally not silently marked as done:
 - [ ] `APP_ENV=production`, strong secrets, restricted runtime DB role.
 - [ ] `alembic upgrade head` run as owner; app starts as `finex_app`.
 - [ ] `/health` and `/ready` monitored externally; alert routing tested.
+- [ ] UI responses carry the strict CSP; no inline scripts remain.
 - [ ] `dependency-audit` is green against the release requirements.
 - [ ] Backups, PITR, off-site immutability, and a restore drill date confirmed.
 - [ ] Central logs and PII-redaction review completed.

@@ -9,6 +9,9 @@ These protect two things that are easy to regress:
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
 from app.core.cookies import ACCESS_COOKIE
@@ -26,7 +29,14 @@ async def test_public_ui_is_served(client) -> None:
     assert "text/html" in alias.headers["content-type"]
     assert alias.headers["cache-control"] == "no-store"
 
-    for path in ("/css/style.css", "/css/dashboard.css", "/js/api.js", "/pages/register.html", "/pages/dashboard.html"):
+    for path in (
+        "/css/style.css",
+        "/css/dashboard.css",
+        "/js/api.js",
+        "/js/theme-init.js",
+        "/pages/register.html",
+        "/pages/dashboard.html",
+    ):
         response = await client.get(path)
         assert response.status_code == 200, path
         expected_cache = "no-cache" if path.endswith((".css", ".js")) else "no-store"
@@ -56,10 +66,31 @@ async def test_browser_security_headers(client) -> None:
     assert page.headers["x-content-type-options"] == "nosniff"
     assert page.headers["x-frame-options"] == "DENY"
     assert page.headers["referrer-policy"] == "no-referrer"
+    csp = page.headers["content-security-policy"]
+    assert "script-src 'self'" in csp
+    assert "script-src 'self' 'unsafe-inline'" not in csp
+    assert "object-src 'none'" in csp
+
+    dashboard = await client.get("/pages/dashboard.html")
+    assert dashboard.headers["content-security-policy"] == csp
 
     api = await client.get("/api/v1/auth/me")
     assert api.status_code == 401
     assert api.headers["cache-control"] == "no-store"
+
+
+async def test_ui_pages_have_no_inline_scripts(client) -> None:
+    root = Path(__file__).resolve().parents[2]
+    pages = ["index.html"] + [
+        path.relative_to(root).as_posix()
+        for path in sorted((root / "pages").glob("*.html"))
+    ]
+
+    inline_script = re.compile(r"<script(?![^>]*\bsrc=)[^>]*>", re.IGNORECASE)
+    for page in pages:
+        response = await client.get(f"/{page}")
+        assert response.status_code == 200, page
+        assert not inline_script.search(response.text), page
 
 
 async def test_cookie_session_refresh_and_logout(client, register_user) -> None:
