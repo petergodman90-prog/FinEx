@@ -11,6 +11,8 @@
 - Org switching rotates DB session context.
 - Browser tokens live only in `HttpOnly`, `SameSite=Lax` cookies; production
   forces `Secure`. API clients opt in to bearer tokens explicitly.
+- UI HTML is served with `script-src 'self'`; the theme bootstrap is an
+  external same-origin script, so inline script execution is not required.
 - Unknown-email logins still pay a bcrypt round so response timing does not
   reveal whether an account exists.
 - The last active owner is protected while holding row locks, including during

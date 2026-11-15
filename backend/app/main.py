@@ -38,6 +38,22 @@ settings = get_settings()
 # backend/app/main.py -> repository root (index.html, css/, js/, pages/, assets/)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Static UI pages load same-origin scripts only. Keeping this header on the app
+# as well as the reverse proxy means a misconfigured proxy cannot silently
+# weaken script execution for the browser shell.
+_UI_CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "img-src 'self' data:; "
+    "media-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "script-src 'self'; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+
 
 def create_app() -> FastAPI:
     install_pii_filter()
@@ -76,6 +92,9 @@ def create_app() -> FastAPI:
             # The UI is not content-hashed. Revalidate the shell on every visit
             # so a deploy cannot leave an old dashboard open in a browser tab.
             response.headers.setdefault("Cache-Control", "no-store")
+            response.headers.setdefault(
+                "Content-Security-Policy", _UI_CONTENT_SECURITY_POLICY
+            )
         elif response_path.endswith((".js", ".css")):
             response.headers.setdefault("Cache-Control", "no-cache")
         return response
