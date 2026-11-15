@@ -17,7 +17,7 @@ python -m venv .venv; .\.venv\Scripts\activate
 pip install -r requirements.txt -r requirements-dev.txt
 alembic upgrade head
 uvicorn app.main:app --reload        # http://127.0.0.1:8000/ (probes: /health, /ready)
-pytest -q                            # 144 tests
+pytest -q                            # 146 tests
 python tests/e2e_browser.py          # headless Chrome + PostgreSQL browser smoke test
 ```
 

@@ -168,23 +168,40 @@ async def _assert_owner_remains(
     *,
     new_role: str | None = None,
     new_status: str | None = None,
+    removing: bool = False,
 ) -> None:
-    """Refuse to remove/demote the last active owner."""
+    """Refuse to remove/demote the last active owner.
+
+    ``removing`` covers dismissal, which has no replacement role/status and
+    would otherwise look like a no-op update.
+    """
     if target.role != Role.OWNER.value or target.status != _ACTIVE:
         return
-    if new_role in (None, Role.OWNER.value) and new_status in (None, _ACTIVE):
+    if (
+        not removing
+        and new_role in (None, Role.OWNER.value)
+        and new_status in (None, _ACTIVE)
+    ):
         return
-    other_owners = await session.scalar(
-        select(func.count())
-        .select_from(Membership)
-        .where(
-            Membership.org_id == actor.org_id,
-            Membership.role == Role.OWNER.value,
-            Membership.status == _ACTIVE,
-            Membership.id != target.id,
+
+    # Lock every active owner row, including the target, before deciding.
+    # Counting without a lock lets two concurrent demotions/dismissals each
+    # see the other owner and both proceed, leaving the workspace ownerless.
+    # PostgreSQL re-evaluates FOR UPDATE rows after a waiting transaction
+    # resumes, so the second request sees the first request's committed state.
+    active_owner_ids = (
+        await session.scalars(
+            select(Membership.id)
+            .where(
+                Membership.org_id == actor.org_id,
+                Membership.role == Role.OWNER.value,
+                Membership.status == _ACTIVE,
+            )
+            .order_by(Membership.id)
+            .with_for_update()
         )
-    )
-    if not other_owners:
+    ).all()
+    if not any(owner_id != target.id for owner_id in active_owner_ids):
         raise ConflictError("The workspace must retain at least one active owner")
 
 
@@ -592,7 +609,7 @@ async def dismiss_staff(
 ) -> None:
     target, _user = await _lookup_member(session, actor, membership_id)
     _ensure_can_manage(actor, target)
-    await _assert_owner_remains(session, actor, target)
+    await _assert_owner_remains(session, actor, target, removing=True)
     before = _snapshot(target)
     await _revoke_active_member_tokens(target)
     await session.delete(target)

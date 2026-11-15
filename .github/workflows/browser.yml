@@ -39,7 +39,7 @@ jobs:
       MIGRATION_DATABASE_URL: postgresql+asyncpg://finex:postgres@127.0.0.1:5432/finex
       REDIS_URL: redis://127.0.0.1:6379/0
       # Test-only values. Never reuse these outside CI.
-      JWT_SECRET: ci-only-not-a-production-secret
+      JWT_SECRET: ci-only-not-a-production-secret-32bytes
       PII_ENCRYPTION_KEY: IlhSkVWXA6mKWXGy2rLEPXojxdbYigobmmWiYCPQLxk=
       PII_HMAC_KEY: f7b830813a497f11c82c214aba395ea4bb2d48528ebe004a30dd282511471fc9
     defaults:

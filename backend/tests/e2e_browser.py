@@ -67,7 +67,7 @@ def _server_env() -> dict[str, str]:
     if not env.get("MIGRATION_DATABASE_URL"):
         env["MIGRATION_DATABASE_URL"] = env["DATABASE_URL"]
     if not env.get("JWT_SECRET"):
-        env["JWT_SECRET"] = "e2e-only-not-a-production-secret"
+        env["JWT_SECRET"] = "e2e-only-not-a-production-secret-32bytes"
     if not env.get("PII_ENCRYPTION_KEY"):
         env["PII_ENCRYPTION_KEY"] = TEST_FERNET_KEY
     if not env.get("PII_HMAC_KEY"):
