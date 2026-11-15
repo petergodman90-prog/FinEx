@@ -9,6 +9,12 @@
 - Every request carries: `user_id`, `active_org_id`, `role`.
 - Sessions revocable instantly.
 - Org switching rotates DB session context.
+- Browser tokens live only in `HttpOnly`, `SameSite=Lax` cookies; production
+  forces `Secure`. API clients opt in to bearer tokens explicitly.
+- Unknown-email logins still pay a bcrypt round so response timing does not
+  reveal whether an account exists.
+- The last active owner is protected while holding row locks, including during
+  concurrent dismissals and demotions; a workspace cannot be left ownerless.
 
 ## 3. AI
 - AI reads only from ledger-derived views. No recalculation.
@@ -40,10 +46,12 @@
 - Soft delete 30 days → purge or crypto-shred.
 - Export pipeline for user data requests.
 
-## 7. Secrets
+## 7. Secrets and dependencies
 - Never in Git or VSCode settings.
 - Local: `.env` (git-ignored).
 - Prod: secret manager.
+- Runtime dependencies are pinned and audited with `pip-audit` in the
+  `dependency-audit` workflow and before release.
 
 ## 8. Rules for all services
 - No direct cross-service DB access. Use APIs or events.

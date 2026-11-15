@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
-from sqlalchemy import text, update
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.db import SessionLocal
@@ -445,3 +446,51 @@ async def test_self_accept_cannot_escalate_role(client, register_user) -> None:
         finally:
             await session.rollback()
             await session.execute(text("RESET ROLE"))
+
+
+async def test_concurrent_owner_removals_keep_one_owner(
+    client, register_user, make_member
+) -> None:
+    owner = await register_user(org_name="Last Owner Race")
+    second = await make_member(owner["active_org_id"], "owner")
+
+    directory = await _directory(client, owner["access_token"])
+    by_user = {item["user_id"]: item for item in directory["items"]}
+    owner_row = by_user[owner["user"]["id"]]
+    second_row = by_user[second["user_id"]]
+
+    # Two owners dismiss each other at the same time. The row lock in
+    # _assert_owner_remains must serialize them so one 204 and one refusal/
+    # revocation result is the only possible outcome.
+    responses = await asyncio.gather(
+        client.delete(
+            f"/api/v1/staff/{second_row['id']}",
+            headers=_h(owner["access_token"]),
+        ),
+        client.delete(
+            f"/api/v1/staff/{owner_row['id']}",
+            headers=_h(second["token"]),
+        ),
+    )
+    statuses = sorted(response.status_code for response in responses)
+    assert statuses.count(204) == 1, [
+        (response.status_code, response.text) for response in responses
+    ]
+    assert statuses[1] in {401, 409}, [
+        (response.status_code, response.text) for response in responses
+    ]
+
+    async with SessionLocal() as session:
+        memberships = (
+            await session.execute(
+                select(Membership).where(
+                    Membership.org_id == uuid.UUID(str(owner["active_org_id"]))
+                )
+            )
+        ).scalars().all()
+    active_owners = [
+        membership
+        for membership in memberships
+        if membership.role == "owner" and membership.status == "active"
+    ]
+    assert len(active_owners) == 1

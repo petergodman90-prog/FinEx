@@ -13,6 +13,7 @@ _WEAK_JWT_SECRETS = {
     "password",
     "replace-me",
     "ci-only-not-a-production-secret",
+    "ci-only-not-a-production-secret-32bytes",
 }
 _MIN_JWT_SECRET_BYTES = 32
 _ALLOWED_JWT_ALGORITHMS = {"HS256", "HS384", "HS512"}

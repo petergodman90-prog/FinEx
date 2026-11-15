@@ -62,6 +62,12 @@ from app.services.errors import (
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
+# Verified for unknown-email logins so they cost the same bcrypt round as a
+# real password check. Without this, response timing reveals account existence.
+_DUMMY_PASSWORD_HASH = (
+    "$2b$12$ytJIxBqsnb4heu7.Wexu5uJMjuLRkHD6sxUgUZ9QDgszJ27rp/WTK"
+)
+
 
 # ── Helpers ────────────────────────────────────────────────
 
@@ -273,11 +279,12 @@ async def login(session: AsyncSession, data: LoginRequest) -> TokenResponse:
     user = await session.scalar(
         select(User).where(User.email_bidx == email_bidx, User.deleted_at.is_(None))
     )
-    if (
-        user is None
-        or not user.is_active
-        or not verify_password(data.password, user.password_hash)
-    ):
+    if user is None:
+        # Pay the same bcrypt cost as a real login so timing does not reveal
+        # whether the account exists, then return the shared error.
+        verify_password(data.password, _DUMMY_PASSWORD_HASH)
+        raise AuthenticationError("Invalid email or password")
+    if not user.is_active or not verify_password(data.password, user.password_hash):
         # Same message for unknown email / wrong password — no enumeration.
         raise AuthenticationError("Invalid email or password")
 

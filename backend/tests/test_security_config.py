@@ -36,7 +36,7 @@ def test_valid_production_settings_boot() -> None:
     [
         "change_me_local_only",
         "changeme",
-        "ci-only-not-a-production-secret",
+        "ci-only-not-a-production-secret-32bytes",
         "short",
         "a" * 48,
     ],

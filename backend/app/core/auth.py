@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from jose import JWTError, jwt
+import jwt
 from pydantic import BaseModel
 
 from app.core.config import get_settings
@@ -119,7 +119,7 @@ def decode_access_token(token: str) -> Optional[TokenPayload]:
             iat=data["iat"],
             exp=data["exp"],
         )
-    except (JWTError, KeyError, ValueError, TypeError):
+    except (jwt.PyJWTError, KeyError, ValueError, TypeError):
         return None
 
 
@@ -141,5 +141,5 @@ def decode_refresh_token(token: str) -> Optional[RefreshPayload]:
             iat=data["iat"],
             exp=data["exp"],
         )
-    except (JWTError, KeyError, ValueError, TypeError):
+    except (jwt.PyJWTError, KeyError, ValueError, TypeError):
         return None

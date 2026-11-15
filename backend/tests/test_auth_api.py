@@ -264,3 +264,26 @@ async def test_sign_in_works_after_kill_switch(client, register_user) -> None:
 async def test_auth_required(client) -> None:
     r = await client.get("/api/v1/auth/me")
     assert r.status_code in (401, 403)
+
+
+async def test_unknown_email_still_runs_bcrypt(client, monkeypatch) -> None:
+    seen: list[tuple[str, str]] = []
+    real_verify = auth_service.verify_password
+
+    def spy(plain: str, hashed: str) -> bool:
+        seen.append((plain, hashed))
+        return real_verify(plain, hashed)
+
+    monkeypatch.setattr(auth_service, "verify_password", spy)
+
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": f"missing-{uuid.uuid4().hex[:12]}@example.com",
+            "password": "not-the-password",
+        },
+    )
+
+    assert response.status_code == 401
+    assert len(seen) == 1
+    assert seen[0][1] == auth_service._DUMMY_PASSWORD_HASH

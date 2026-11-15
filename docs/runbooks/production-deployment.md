@@ -266,7 +266,7 @@ A backup that has never been restored is not a backup.
 
 Before a release:
 
-1. CI is green for both `backend` and `browser` workflows.
+1. CI is green for the `backend`, `browser`, and `dependency-audit` workflows.
 2. A verified backup exists and the migration was reviewed.
 3. Staging ran `alembic upgrade head`, the backend suite, and the browser E2E.
 4. The previous release artifact is retained.
@@ -290,9 +290,10 @@ These are intentionally not silently marked as done:
   until a hosting target and monitoring provider are chosen.
 - **No managed backup/PITR provider has been selected.** The backup runbook is
   ready, but the production backup configuration and drill date must be owned.
-- **No third-party penetration test or dependency-audit gate is configured.**
-  Run `pip-audit` (or the chosen SCA tool) before launch and after dependency
-  changes.
+- **No third-party penetration test is scheduled.** Runtime dependencies are
+  audited by the `dependency-audit` workflow on requirements changes, on main,
+  and weekly; it was clean on 2026-11-15. Re-run it immediately before launch
+  because the vulnerability database changes over time.
 - **CSP still permits inline scripts** because the static theme bootstrap uses
   them. Tighten this after moving the bootstrap to a nonced or external file.
 
@@ -302,6 +303,7 @@ These are intentionally not silently marked as done:
 - [ ] `APP_ENV=production`, strong secrets, restricted runtime DB role.
 - [ ] `alembic upgrade head` run as owner; app starts as `finex_app`.
 - [ ] `/health` and `/ready` monitored externally; alert routing tested.
+- [ ] `dependency-audit` is green against the release requirements.
 - [ ] Backups, PITR, off-site immutability, and a restore drill date confirmed.
 - [ ] Central logs and PII-redaction review completed.
 - [ ] Firewall, private DB/Redis, and host hardening verified.
