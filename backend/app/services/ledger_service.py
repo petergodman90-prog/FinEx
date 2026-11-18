@@ -20,10 +20,16 @@ from decimal import Decimal
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.errors import NotFoundError
+from app.services.errors import DomainValidationError, NotFoundError
 
 ZERO = Decimal("0")
 MONEY_QUANT = Decimal("0.0001")
+
+
+def _like_pattern(value: str) -> str:
+    """Build a literal ``ILIKE`` pattern (wildcards in user input stay literal)."""
+    escaped = value.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+    return f"%{escaped}%"
 
 
 # ── Row shapes ───────────────────────────────────────────────
@@ -97,6 +103,9 @@ class JournalEntry:
     reversal_of_id: uuid.UUID | None
     total_debit: Decimal
     total_credit: Decimal
+    source_type: str | None = None
+    source_id: uuid.UUID | None = None
+    proposal_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -109,6 +118,50 @@ class JournalLine:
     debit: Decimal
     credit: Decimal
     description: str | None
+
+
+@dataclass(frozen=True)
+class JournalActivityLine:
+    """One journal line in a general-ledger account statement."""
+
+    journal_entry_id: uuid.UUID
+    entry_number: int
+    effective_at: datetime
+    memo: str | None
+    status: str
+    line_number: int
+    description: str | None
+    debit: Decimal
+    credit: Decimal
+    running_balance: Decimal
+
+
+@dataclass(frozen=True)
+class AccountBalance:
+    account: Account
+    debit_total: Decimal
+    credit_total: Decimal
+    net_debit_balance: Decimal
+
+    @property
+    def normal_balance(self) -> Decimal:
+        """Balance on the account's normal side (positive for its usual sign)."""
+        if self.account.account_type in {"liability", "equity", "revenue"}:
+            return self.credit_total - self.debit_total
+        return self.debit_total - self.credit_total
+
+
+@dataclass(frozen=True)
+class AccountActivity:
+    account: Account
+    period_start: date | None
+    period_end: date | None
+    opening_balance: Decimal
+    debit_total: Decimal
+    credit_total: Decimal
+    closing_balance: Decimal
+    total: int
+    lines: list[JournalActivityLine]
 
 
 @dataclass(frozen=True)
@@ -287,6 +340,7 @@ async def list_accounts(
     *,
     include_inactive: bool = False,
     account_type: str | None = None,
+    q: str | None = None,
 ) -> list[Account]:
     sql = f"SELECT {_ACCOUNT_COLUMNS} FROM ledger.accounts WHERE org_id = :org"
     params: dict = {"org": org_id}
@@ -295,9 +349,67 @@ async def list_accounts(
     if account_type:
         sql += " AND account_type = CAST(:kind AS ledger.account_type)"
         params["kind"] = account_type
+    if q:
+        sql += " AND (code ILIKE :q ESCAPE '!' OR name ILIKE :q ESCAPE '!')"
+        params["q"] = _like_pattern(q)
     sql += " ORDER BY code"
     rows = (await session.execute(text(sql), params)).all()
     return [_account_from_row(row) for row in rows]
+
+
+async def list_account_balances(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    include_inactive: bool = False,
+    account_type: str | None = None,
+    q: str | None = None,
+) -> list[AccountBalance]:
+    """Chart of accounts with the ledger-derived totals for each account."""
+    accounts = await list_accounts(
+        session,
+        org_id,
+        include_inactive=include_inactive,
+        account_type=account_type,
+        q=q,
+    )
+    if not accounts:
+        return []
+    rows = (
+        await session.execute(
+            text(
+                """
+                SELECT account_id, debit_total, credit_total,
+                       net_debit_balance
+                FROM ledger.v_trial_balance
+                WHERE org_id = :org
+                """
+            ),
+            {"org": org_id},
+        )
+    ).all()
+    balances = {
+        row.account_id: (
+            Decimal(row.debit_total),
+            Decimal(row.credit_total),
+            Decimal(row.net_debit_balance),
+        )
+        for row in rows
+    }
+    result: list[AccountBalance] = []
+    for account in accounts:
+        debit_total, credit_total, net_debit = balances.get(
+            account.id, (ZERO, ZERO, ZERO)
+        )
+        result.append(
+            AccountBalance(
+                account=account,
+                debit_total=debit_total,
+                credit_total=credit_total,
+                net_debit_balance=net_debit,
+            )
+        )
+    return result
 
 
 async def get_account(
@@ -310,6 +422,21 @@ async def get_account(
                 "WHERE org_id = :org AND code = :code"
             ),
             {"org": org_id, "code": code},
+        )
+    ).one_or_none()
+    return _account_from_row(row) if row else None
+
+
+async def get_account_by_id(
+    session: AsyncSession, org_id: uuid.UUID, account_id: uuid.UUID
+) -> Account | None:
+    row = (
+        await session.execute(
+            text(
+                f"SELECT {_ACCOUNT_COLUMNS} FROM ledger.accounts "
+                "WHERE org_id = :org AND id = CAST(:id AS uuid)"
+            ),
+            {"org": org_id, "id": account_id},
         )
     ).one_or_none()
     return _account_from_row(row) if row else None
@@ -708,46 +835,95 @@ async def list_stock_movements(
 # ── Journal ──────────────────────────────────────────────────
 
 
+def _validate_date_window(start: date | None, end: date | None) -> None:
+    if start is not None and end is not None and start > end:
+        raise DomainValidationError(
+            "Ledger start date must not be after its end date",
+            details={
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+            },
+        )
+
+
 async def list_journal_entries(
     session: AsyncSession,
     org_id: uuid.UUID,
     *,
     limit: int = 50,
     offset: int = 0,
-    since: datetime | None = None,
-    until: datetime | None = None,
+    start: date | None = None,
+    end: date | None = None,
+    account_id: uuid.UUID | None = None,
+    status: str | None = None,
+    source_type: str | None = None,
+    proposal_type: str | None = None,
+    q: str | None = None,
 ) -> tuple[list[JournalEntry], int]:
+    """Journal entries, newest effective date first, with optional filters."""
+    _validate_date_window(start, end)
     where = ["je.org_id = :org"]
     params: dict = {"org": org_id}
-    if since is not None:
-        where.append("je.effective_at >= CAST(:since AS timestamptz)")
-        params["since"] = since
-    if until is not None:
-        where.append("je.effective_at < CAST(:until AS timestamptz)")
-        params["until"] = until
+    if start is not None:
+        where.append("je.effective_at >= CAST(:start AS date)")
+        params["start"] = start
+    if end is not None:
+        where.append(
+            "je.effective_at < (CAST(:end AS date) + INTERVAL '1 day')"
+        )
+        params["end"] = end
+    if account_id is not None:
+        where.append(
+            "EXISTS (SELECT 1 FROM ledger.journal_lines jl "
+            "WHERE jl.org_id = je.org_id "
+            "AND jl.journal_entry_id = je.id "
+            "AND jl.account_id = CAST(:account AS uuid))"
+        )
+        params["account"] = account_id
+    if status is not None:
+        where.append("je.status = CAST(:status AS ledger.entry_status)")
+        params["status"] = status
+    if source_type is not None:
+        where.append("pe.source_type = :source_type")
+        params["source_type"] = source_type
+    if proposal_type is not None:
+        where.append("p.proposal_type = :proposal_type")
+        params["proposal_type"] = proposal_type
+    if q:
+        where.append("coalesce(je.memo, '') ILIKE :q ESCAPE '!'")
+        params["q"] = _like_pattern(q)
     clause = " AND ".join(where)
 
+    from_clause = (
+        "FROM ledger.journal_entries je "
+        "JOIN ledger.posting_events pe "
+        "  ON pe.id = je.posting_event_id AND pe.org_id = je.org_id "
+        "LEFT JOIN proposals p "
+        "  ON pe.source_type = 'proposal' "
+        " AND p.id = pe.source_id AND p.org_id = je.org_id "
+    )
     total = await session.scalar(
-        text(
-            "SELECT count(*) FROM ledger.journal_entries je "
-            f"WHERE {clause}"
-        ),
+        text(f"SELECT count(*) {from_clause} WHERE {clause}"),
         params,
     )
     rows = (
         await session.execute(
             text(
                 """
-                SELECT je.id, je.entry_number, je.effective_at, je.memo, je.status,
-                       je.reversal_of_id,
+                SELECT je.id, je.entry_number, je.effective_at, je.memo,
+                       je.status, je.reversal_of_id,
+                       pe.source_type, pe.source_id, p.proposal_type,
                        coalesce((SELECT sum(jl.debit) FROM ledger.journal_lines jl
-                                 WHERE jl.journal_entry_id = je.id), 0) AS total_debit,
+                                 WHERE jl.journal_entry_id = je.id), 0)
+                           AS total_debit,
                        coalesce((SELECT sum(jl.credit) FROM ledger.journal_lines jl
-                                 WHERE jl.journal_entry_id = je.id), 0) AS total_credit
-                FROM ledger.journal_entries je
+                                 WHERE jl.journal_entry_id = je.id), 0)
+                           AS total_credit
                 """
+                f"{from_clause}"
                 f"WHERE {clause} "
-                "ORDER BY je.entry_number DESC LIMIT :limit OFFSET :offset"
+                "ORDER BY je.effective_at DESC, je.entry_number DESC "
+                "LIMIT :limit OFFSET :offset"
             ),
             {**params, "limit": limit, "offset": offset},
         )
@@ -763,6 +939,9 @@ async def list_journal_entries(
                 reversal_of_id=r.reversal_of_id,
                 total_debit=Decimal(r.total_debit),
                 total_credit=Decimal(r.total_credit),
+                source_type=r.source_type,
+                source_id=r.source_id,
+                proposal_type=r.proposal_type,
             )
             for r in rows
         ],
@@ -777,13 +956,21 @@ async def get_journal_entry(
         await session.execute(
             text(
                 """
-                SELECT je.id, je.entry_number, je.effective_at, je.memo, je.status,
-                       je.reversal_of_id,
+                SELECT je.id, je.entry_number, je.effective_at, je.memo,
+                       je.status, je.reversal_of_id,
+                       pe.source_type, pe.source_id, p.proposal_type,
                        coalesce((SELECT sum(jl.debit) FROM ledger.journal_lines jl
-                                 WHERE jl.journal_entry_id = je.id), 0) AS total_debit,
+                                 WHERE jl.journal_entry_id = je.id), 0)
+                           AS total_debit,
                        coalesce((SELECT sum(jl.credit) FROM ledger.journal_lines jl
-                                 WHERE jl.journal_entry_id = je.id), 0) AS total_credit
+                                 WHERE jl.journal_entry_id = je.id), 0)
+                           AS total_credit
                 FROM ledger.journal_entries je
+                JOIN ledger.posting_events pe
+                  ON pe.id = je.posting_event_id AND pe.org_id = je.org_id
+                LEFT JOIN proposals p
+                  ON pe.source_type = 'proposal'
+                 AND p.id = pe.source_id AND p.org_id = je.org_id
                 WHERE je.org_id = :org AND je.id = CAST(:id AS uuid)
                 """
             ),
@@ -801,6 +988,9 @@ async def get_journal_entry(
         reversal_of_id=row.reversal_of_id,
         total_debit=Decimal(row.total_debit),
         total_credit=Decimal(row.total_credit),
+        source_type=row.source_type,
+        source_id=row.source_id,
+        proposal_type=row.proposal_type,
     )
 
 
@@ -836,6 +1026,151 @@ async def get_journal_lines(
         )
         for r in rows
     ]
+
+
+async def account_activity(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    account_id: uuid.UUID,
+    *,
+    start: date | None = None,
+    end: date | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> AccountActivity | None:
+    """General-ledger statement for one account.
+
+    ``opening_balance`` and ``closing_balance`` are net debit balances
+    (debit - credit). A credit-normal account such as revenue therefore closes
+    with a negative net debit balance. Running balances follow the same
+    convention and include the opening balance.
+    """
+    _validate_date_window(start, end)
+    account = await get_account_by_id(session, org_id, account_id)
+    if account is None:
+        return None
+
+    where = [
+        "jl.org_id = :org",
+        "jl.account_id = CAST(:account AS uuid)",
+    ]
+    params: dict = {"org": org_id, "account": account_id}
+    if start is not None:
+        where.append("je.effective_at >= CAST(:start AS date)")
+        params["start"] = start
+    if end is not None:
+        where.append(
+            "je.effective_at < (CAST(:end AS date) + INTERVAL '1 day')"
+        )
+        params["end"] = end
+    clause = " AND ".join(where)
+
+    opening_balance = ZERO
+    if start is not None:
+        opening_balance = Decimal(
+            await session.scalar(
+                text(
+                    """
+                    SELECT coalesce(sum(jl.debit - jl.credit), 0)
+                    FROM ledger.journal_lines jl
+                    JOIN ledger.journal_entries je
+                      ON je.id = jl.journal_entry_id
+                     AND je.org_id = jl.org_id
+                    WHERE jl.org_id = :org
+                      AND jl.account_id = CAST(:account AS uuid)
+                      AND je.effective_at < CAST(:start AS date)
+                    """
+                ),
+                {
+                    "org": org_id,
+                    "account": account_id,
+                    "start": start,
+                },
+            )
+            or 0
+        )
+
+    totals = (
+        await session.execute(
+            text(
+                """
+                SELECT coalesce(sum(jl.debit), 0) AS debit_total,
+                       coalesce(sum(jl.credit), 0) AS credit_total,
+                       count(*) AS line_count
+                FROM ledger.journal_lines jl
+                JOIN ledger.journal_entries je
+                  ON je.id = jl.journal_entry_id
+                 AND je.org_id = jl.org_id
+                """
+                f"WHERE {clause}"
+            ),
+            params,
+        )
+    ).one()
+    debit_total = Decimal(totals.debit_total)
+    credit_total = Decimal(totals.credit_total)
+
+    rows = (
+        await session.execute(
+            text(
+                """
+                WITH filtered AS (
+                    SELECT jl.journal_entry_id, je.entry_number,
+                           je.effective_at, je.memo, je.status,
+                           jl.line_number, jl.description,
+                           jl.debit, jl.credit,
+                           sum(jl.debit - jl.credit) OVER (
+                               ORDER BY je.effective_at, je.entry_number,
+                                        jl.line_number
+                               ROWS BETWEEN UNBOUNDED PRECEDING
+                                        AND CURRENT ROW
+                           ) AS period_running_balance
+                    FROM ledger.journal_lines jl
+                    JOIN ledger.journal_entries je
+                      ON je.id = jl.journal_entry_id
+                     AND je.org_id = jl.org_id
+                    """
+                f"WHERE {clause}"
+                """
+                )
+                SELECT journal_entry_id, entry_number, effective_at, memo,
+                       status, line_number, description, debit, credit,
+                       period_running_balance
+                FROM filtered
+                ORDER BY effective_at, entry_number, line_number
+                LIMIT :limit OFFSET :offset
+                """
+            ),
+            {**params, "limit": limit, "offset": offset},
+        )
+    ).all()
+
+    return AccountActivity(
+        account=account,
+        period_start=start,
+        period_end=end,
+        opening_balance=opening_balance,
+        debit_total=debit_total,
+        credit_total=credit_total,
+        closing_balance=opening_balance + debit_total - credit_total,
+        total=int(totals.line_count or 0),
+        lines=[
+            JournalActivityLine(
+                journal_entry_id=r.journal_entry_id,
+                entry_number=r.entry_number,
+                effective_at=r.effective_at,
+                memo=r.memo,
+                status=r.status,
+                line_number=r.line_number,
+                description=r.description,
+                debit=Decimal(r.debit),
+                credit=Decimal(r.credit),
+                running_balance=opening_balance
+                + Decimal(r.period_running_balance),
+            )
+            for r in rows
+        ],
+    )
 
 
 async def trial_balance(
