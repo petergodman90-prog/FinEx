@@ -2,7 +2,8 @@
 
 FastAPI + async SQLAlchemy platform API: auth/session management, tenant
 isolation (RLS), CRM, dashboard aggregation, expenses/debts, products,
-inventory, sales/credit notes, proposals, and the audit trail.
+inventory, sales/credit notes, proposals, the ledger read models, and the
+audit trail.
 Alembic revision `002_financial_core` also installs Person A's `ledger` schema
 with tenant policies, safe read views, and execute-only posting grants.
 
@@ -17,7 +18,7 @@ python -m venv .venv; .\.venv\Scripts\activate
 pip install -r requirements.txt -r requirements-dev.txt
 alembic upgrade head
 uvicorn app.main:app --reload        # http://127.0.0.1:8000/ (probes: /health, /ready)
-pytest -q                            # 147 tests
+pytest -q                            # 149 tests
 python tests/e2e_browser.py          # headless Chrome + PostgreSQL browser smoke test
 ```
 

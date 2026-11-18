@@ -106,3 +106,65 @@ Every report query filters on `org_id` and runs under the request's RLS-bound
 session. A report for one organisation cannot include another organisation's
 accounts, journal lines, stock or open items. Tests cover cross-organisation
 isolation in `backend/tests/test_posting_service.py`.
+
+## Ledger workspace read API
+
+`app/api/ledger.py` exposes the read-only surface a ledger workspace needs.
+Every route requires `reports:read` (all workspace roles), runs under the
+request's RLS-bound session, and returns database-derived values. The UI must
+format these values and must not recalculate balances.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/v1/ledger/accounts` | Chart of accounts with all-time debit, credit and normal balance |
+| `GET /api/v1/ledger/accounts/{id}/activity` | General-ledger statement for one account |
+| `GET /api/v1/ledger/journal-entries` | Paginated journal entry list |
+| `GET /api/v1/ledger/journal-entries/{id}` | One entry with its lines and linked documents |
+| `GET /api/v1/ledger/periods` | Accounting periods and their closed state |
+
+### Accounts
+
+`/ledger/accounts` accepts `include_inactive`, `account_type`, and `q` (matches
+code or name). Each row contains the account id/code/name/type and the
+`debit_total`, `credit_total` and `balance` read from
+`ledger.v_trial_balance`. `balance` is the **normal balance**: debit minus
+credit for assets, expenses and COGS; credit minus debit for liabilities,
+equity and revenue.
+
+### Journal entries
+
+`/ledger/journal-entries` accepts:
+
+- `start` / `end` — inclusive effective-date bounds;
+- `account_id` — only entries with a line on that account;
+- `status` — `posted` or `reversed`;
+- `source_type` — the raw posting event source (proposal-backed postings use
+  `proposal`);
+- `proposal_type` — the domain type (`sale`, `expense`, `opening_stock`,
+  `credit_note`, `stock_adjustment`, `settlement`, …);
+- `q` — case-insensitive memo search;
+- `limit` / `offset` — standard pagination envelope.
+
+Rows are newest effective date first. `total_debit` and `total_credit` are the
+entry totals, and `reversal_of_id` links a reversal to its original entry.
+`source_id` is the proposal id for proposal-backed postings.
+
+The detail route adds the entry's `lines` (account, description, debit, credit)
+and `documents` (`receipt_id`, `receipt_number`, `receipt_type`,
+`open_item_id`) when the posting produced one.
+
+### General-ledger activity
+
+`/ledger/accounts/{id}/activity` returns the account, the requested period and
+paged statement lines. Each line includes the entry number, effective date,
+memo, line description, debit, credit and `running_balance`. Opening and
+closing balances are **net debit** balances (debit - credit), so a revenue
+account closes with a negative value. The running balance includes the opening
+balance and is calculated by the database across the whole filtered period, so
+it is correct on every page.
+
+Invalid date windows return `422 validation_error`. A missing or foreign
+account or entry returns `404 not_found`; RLS and explicit `org_id` filters both
+prevent cross-tenant reads. `backend/tests/test_ledger_api.py` covers the
+account totals, filters, detail lines, pagination, viewer access and tenant
+isolation.

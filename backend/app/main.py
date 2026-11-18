@@ -19,6 +19,7 @@ from app.api import (
     debts,
     expenses,
     inventory,
+    ledger,
     products,
     proposals,
     reports,
@@ -134,6 +135,7 @@ def create_app() -> FastAPI:
     api.include_router(sales.router)
     api.include_router(dashboard.router)
     api.include_router(reports.router)
+    api.include_router(ledger.router)
     api.include_router(staff.router)
     app.include_router(api)
 
